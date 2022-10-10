@@ -1,0 +1,17 @@
+<RCC>
+    <qresource prefix="/plugins/qgs_topopy">
+        <file>icons/apply_icon.png</file>
+        <file>icons/arrow-000.png</file>
+        <file>icons/arrow-180.png</file>
+        <file>icons/arrow-circle.png</file>
+        <file>icons/chi_prof.ico</file>
+        <file>icons/dam.ico</file>
+        <file>icons/flag.ico</file>
+        <file>icons/ksn_prof.ico</file>
+        <file>icons/loglog_prof.ico</file>
+        <file>icons/long_prof.ico</file>
+        <file>icons/long_prof.png</file>
+        <file>icons/reg.ico</file>
+        <file>icons/savefig.png</file>
+    </qresource>
+</RCC>
