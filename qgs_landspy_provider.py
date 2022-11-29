@@ -41,60 +41,61 @@ from .algs.basins_alg import DrainageBasins
 from .algs.chimap_alg import ChiMap
 from .algs.channelsline_alg import ChannelsFromLines
 from .algs.channelsbasin_alg import ChannelsFromBasin
+from .algs.hypsometry_alg import HypsometricCurves
 
 
 class QgsTopopyProvider(QgsProcessingProvider):
 
-	def __init__(self):
-		"""
+    def __init__(self):
+        """
 		Default constructor.
 		"""
-		QgsProcessingProvider.__init__(self)
+        QgsProcessingProvider.__init__(self)
 
-	def unload(self):
-		"""
+    def unload(self):
+        """
 		Unloads the provider. Any tear-down steps required by the provider
 		should be implemented here.
 		"""
-		pass
+        pass
 
-	def loadAlgorithms(self):
-		"""
+    def loadAlgorithms(self):
+        """
 		Loads all algorithms belonging to this provider.
 		"""
-		self.algs = [Fill(), FlowDirection(), FlowAccumulation(), CreateNetwork(), NetworkShapefile(), DrainageBasins(),
-                     ChiMap(), ChannelsFromLines(), ChannelsFromBasin()]
-		
-		for alg in self.algs:
-			self.addAlgorithm( alg )
+        self.algs = [Fill(), FlowDirection(), FlowAccumulation(), CreateNetwork(), NetworkShapefile(), DrainageBasins(),
+                     ChiMap(), ChannelsFromLines(), ChannelsFromBasin(), HypsometricCurves()]
 
-	def id(self):
-		"""
+        for alg in self.algs:
+            self.addAlgorithm(alg)
+
+    def id(self):
+        """
 		Returns the unique provider id, used for identifying the provider. This
 		string should be a unique, short, character only string, eg "qgis" or
 		"gdal". This string should not be localised.
 		"""
-		return 'qgs_topopy_provider'
+        return 'qgs_topopy_provider'
 
-	def name(self):
-		"""
+    def name(self):
+        """
 		Returns the provider name, which is used to describe the provider
 		within the GUI..
 		"""
-		return self.tr('Topopy')
+        return self.tr('Topopy')
 
-	def icon(self):
-		"""
+    def icon(self):
+        """
 		Should return a QIcon which is used for your provider inside
 		the Processing toolbox.
 		"""
-		return QgsProcessingProvider.icon(self)
+        return QgsProcessingProvider.icon(self)
 
-	def longName(self):
-		"""
+    def longName(self):
+        """
 		Returns the a longer version of the provider name, which can include
 		extra details such as version numbers. E.g. "Lastools LIDAR tools
 		(version 2.2.1)". This string should be localised. The default
 		implementation returns the same string as name().
 		"""
-		return self.name()
+        return self.name()

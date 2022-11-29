@@ -32,6 +32,7 @@ from qgis.core import QgsApplication
 from .resources import *
 # Import the code for the dialog
 from .profiler_dialog import ProfilerWindow
+from .hcurve_dialog import HypsometricWindow
 from .qgs_landspy_provider import QgsTopopyProvider
 import os
 
@@ -58,10 +59,14 @@ class QgsLandspy:
     def initGui(self):
         """Create the menu entries and toolbar icons inside the QGIS GUI."""
         # Add profiler
-        icon_path = ':/plugins/qgs_topopy/icons/long_prof.png'
-        self.profAction = QAction(QIcon(icon_path), "Profiler", self.iface.mainWindow())
+        profiler_icon = ':/plugins/qgs_topopy/icons/long_prof.png'
+        hypsometry_icon = ':/plugins/qgs_topopy/icons/calhypso.png'
+        self.profAction = QAction(QIcon(profiler_icon), "Profiler", self.iface.mainWindow())
+        self.hypsoAction = QAction(QIcon(hypsometry_icon), "Hypsometry", self.iface.mainWindow())
         self.profAction.triggered.connect(self.run_profiler)
+        self.hypsoAction.triggered.connect(self.run_hypsometry)
         self.iface.addToolBarIcon(self.profAction)
+        self.iface.addToolBarIcon(self.hypsoAction)
         self.iface.addPluginToMenu(self.menu, self.profAction)
         self.provider = QgsTopopyProvider()
         QgsApplication.processingRegistry().addProvider(self.provider)
@@ -72,14 +77,22 @@ class QgsLandspy:
         # Remove Profiler
         self.iface.removePluginMenu(self.menu, self.profAction)
         self.iface.removeToolBarIcon(self.profAction)
+        self.iface.removeToolBarIcon(self.hypsoAction)
         QgsApplication.processingRegistry().removeProvider(self.provider)
 
 
     def run_profiler(self):
         """Runs the Profiler application"""
-
         if not self.appWindow:
             self.appWindow = ProfilerWindow(parent=self.iface.mainWindow(), iface=self.iface, app_path=self.plugin_dir)
+            self.appWindow.window_closed.connect(self.cleaning)
+            self.appWindow.show()
+
+    def run_hypsometry(self):
+        """Runs the Hypsometry application"""
+
+        if not self.appWindow:
+            self.appWindow = HypsometricWindow(parent=self.iface.mainWindow(), iface=self.iface, app_path=self.plugin_dir)
             self.appWindow.window_closed.connect(self.cleaning)
             self.appWindow.show()
 

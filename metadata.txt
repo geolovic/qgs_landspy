@@ -3,9 +3,9 @@
 # This file should be included when you package your plugin.# Mandatory items:
 
 [general]
-name=Topopy
+name=QLandspy
 qgisMinimumVersion=3.0
-description=Topographic analysis with QGIS 
+description=Landscape analysis with QGIS
 version=0.1
 author=J. Vicente Pérez
 email=vperez@go.ugr.es
@@ -29,7 +29,7 @@ homepage=http://homepage
 category=Plugins
 icon=icon.png
 # experimental flag
-experimental=False
+experimental=True
 
 # deprecated flag (applies to the whole plugin, not just a single version)
 deprecated=False

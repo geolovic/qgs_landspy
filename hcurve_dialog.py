@@ -112,7 +112,7 @@ class HypsometricWindow(QMainWindow):
 
         # Tools menu (Smooth channel, Delete knickpoints, Delete regressions)
         self.qa_colorRamp = QAction("Select color ramp", self)
-        self.qa_saveFigure = QAction(QIcon(self.app_path + "icons/savefig.pgn"), "Save Figure", self)
+        self.qa_saveFigure = QAction(QIcon(self.app_path + "icons/savefig.png"), "Save Figure", self)
         self.qa_saveFigures = QAction("Save Figures", self)
         self.qa_setName = QAction("Set Name", self)
 
@@ -378,6 +378,7 @@ class HypsometricWindow(QMainWindow):
                 curva.plot(self.ax)
         else:
             curva.plot(self.ax)
+            self.ax.set_title(curva.getName())
 
         if self.qa_showLegend.isChecked():
             self.ax.legend(loc='lower left', bbox_to_anchor=(1, -0.02))
@@ -409,11 +410,7 @@ class HypsometricWindow(QMainWindow):
 
     def setColorRamp(self):
         pass
-    # BUTTON HANDLERS
-    ###########################################################################
-    # Handlers for button triggered. 
-    # When hit a button, only uncheck other options, the logic is embeded when they changed
-    # This allows connect-disconnect canvas events when hitting other button
+
     
     def nextCurve(self, direction):
         # Handler to tb_button_prev and tb_button_next buttons
@@ -439,25 +436,11 @@ class HypsometricWindow(QMainWindow):
         self._draw()
 
     def closeEvent(self, event):
-        pass
-        # qm = QMessageBox()
-        # res = qm.question(self, "Exit profiler", "Are you sure you want to exit?\nUnsaved changes will be lost.", qm.Yes|qm.No)
-        # if res == qm.Yes:
-        #     # Remove layers
-        #     for vl in [self.channelVl, self.kpVl, self.regVl]:
-        #         if vl:
-        #             QgsProject.instance().removeMapLayer(vl)
-        #     # Refresh map canvas
-        #     if self.iface:
-        #         self.iface.mapCanvas().refresh()
-        #     # Emit closing signal
-        #     self.window_closed.emit()
-        #     # Close window
-        #     event.accept()
-        # else:
-        #     # Do not close
-        #     event.ignore()
-        #
+        # Emit closing signal
+        self.window_closed.emit()
+        # Close window
+        event.accept()
+
     def saveFigures(self):
         pass
         # # Check if App has channels

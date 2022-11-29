@@ -13,5 +13,6 @@
         <file>icons/long_prof.png</file>
         <file>icons/reg.ico</file>
         <file>icons/savefig.png</file>
+        <file>icons/calhypso.png</file>
     </qresource>
 </RCC>
