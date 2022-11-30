@@ -1,34 +1,28 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Ejemplo de utilizacion de toolbar en Qt5
-
-Para crear una toolbar en nuestra MainWindow y añadirla, simplemente utilizaremos
-    toolbar = QToolBar("My main toolbar")
-    self.addToolBar(toolbar)
-        
+Dialog to represent Hypsometric Curves (landspy.HCurve instances)
 """
 
 # 1. Import sentences
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-
 import sys
-from osgeo import ogr, osr
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavToolBar
 from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 from landspy import HCurve
+from dialogs import ColorRampDialog
 
 
 class HypsometricWindow(QMainWindow):
     
     window_closed = pyqtSignal()
     
-    def __init__(self, parent=None, iface=None, app_path= ""):
+    def __init__(self, parent=None, iface=None, app_path=""):
 
         # Init constructor with a parent window
         super().__init__(parent)
@@ -50,7 +44,11 @@ class HypsometricWindow(QMainWindow):
         self.curves = np.array([])
         self.n_curves = 0
         self.active_curve = None
-        
+
+        # Display setting
+        self.cmap = "RdYlBu"
+        self.prop = "Id"
+
         # Initialize GUI
         self.GUI()
         
@@ -101,6 +99,7 @@ class HypsometricWindow(QMainWindow):
         self.qa_showLegend = QAction(QIcon(self.app_path + "icons/primary_legend.ico"), "Show Legend", self)
         self.qa_showMetrics.setCheckable(True)
         self.qa_showLegend.setCheckable(True)
+        self.qa_showLegend.setEnabled(False)
 
         # File menu (Load, Save, Close)
         self.qa_loadCurves = QAction("Load curves", self)
@@ -111,7 +110,7 @@ class HypsometricWindow(QMainWindow):
         self.qa_saveCurve = QAction("Save curve", self)
 
         # Tools menu (Smooth channel, Delete knickpoints, Delete regressions)
-        self.qa_colorRamp = QAction("Select color ramp", self)
+        self.qa_displaySetting = QAction("Display settings", self)
         self.qa_saveFigure = QAction(QIcon(self.app_path + "icons/savefig.png"), "Save Figure", self)
         self.qa_saveFigures = QAction("Save Figures", self)
         self.qa_setName = QAction("Set Name", self)
@@ -136,7 +135,8 @@ class HypsometricWindow(QMainWindow):
         self.qa_saveCurve.triggered.connect(self.saveCurve)
         
         # Tools
-        self.qa_colorRamp.triggered.connect(self.setColorRamp)
+        self.qa_displaySetting.triggered.connect(self.displaySetting)
+        self.qa_setName.triggered.connect(self.setName)
         self.qa_saveFigure.triggered.connect(self.saveFigure)
         self.qa_saveFigures.triggered.connect(self.saveFigures)
 
@@ -160,34 +160,31 @@ class HypsometricWindow(QMainWindow):
 
     def _create_menu(self):
         """
-        Función interna para crear el menú de la aplicación
+        Private function to create the main menu
         """
         # Create empty menu bar and add different menus
         menubar = self.menuBar()
-        filemenu = menubar.addMenu("&File")
+        file_menu = menubar.addMenu("&File")
         editmenu = menubar.addMenu("&Edit")
-        exportmenu = menubar.addMenu("E&xport")
-        toolsmenu = menubar.addMenu("&Tools")
+        export_menu = menubar.addMenu("E&xport")
+        tools_menu = menubar.addMenu("&Tools")
         
         # Add actions to menus
-        filemenu.addAction(self.qa_loadCurves)
-        filemenu.addAction(self.qa_saveCurves)
-        filemenu.addAction(self.qa_close)
+        file_menu.addAction(self.qa_loadCurves)
+        file_menu.addAction(self.qa_saveCurves)
+        file_menu.addAction(self.qa_close)
         editmenu.addAction(self.qa_loadCurve)
         editmenu.addAction(self.qa_removeCurve)
         editmenu.addAction(self.qa_saveCurve)
-        exportmenu.addAction(self.qa_saveFigure)
-        exportmenu.addAction(self.qa_saveFigures)
-        toolsmenu.addAction(self.qa_setName)
-        toolsmenu.addAction(self.qa_colorRamp)
-
-        """
-        Load a channels file into the App. 
-        """
-        pass
+        export_menu.addAction(self.qa_saveFigure)
+        export_menu.addAction(self.qa_saveFigures)
+        tools_menu.addAction(self.qa_setName)
+        tools_menu.addAction(self.qa_displaySetting)
 
     def _format_ax(self, grids=True):
-        # Function to format the Axe instance
+        """
+        Private function to format the main window Axe object
+        """
         # Set limits (0-1) and labels for X-Y
         self.ax.set_xlim((0, 1))
         self.ax.set_ylim((0, 1))
@@ -208,7 +205,6 @@ class HypsometricWindow(QMainWindow):
         """
         This function load hypsometric curves into the App. Curves are loaded as a numpy array of HCurve objects
         """
-        dlg = QFileDialog(self)
         file_filter = "Numpy array file (*.npy);;"
         file_filter += "All Files (*.*)"
 
@@ -271,7 +267,7 @@ class HypsometricWindow(QMainWindow):
 
     def removeCurve(self):
         """
-        Removes the current channel from the App. 
+        Removes the current hypsometric curve from the App.
         """
         # Check if App has channels
         if self.n_curves == 0:
@@ -279,6 +275,7 @@ class HypsometricWindow(QMainWindow):
 
         # Removes current channel (self.active_channel)
         if self.curves.size == 1:
+            # If the last curve is removed, empty the application
             self.curves = np.array([])
             self.n_curves = 0
             self.active_curve = None
@@ -294,7 +291,24 @@ class HypsometricWindow(QMainWindow):
         self._draw()
 
     def saveFigure(self):
-        pass
+        """
+        Saves the current figure to the disk in raster or vector format
+        """
+        # Check if App has channels
+        if self.n_curves == 0:
+            return
+
+        file_filter = "Portable Network Graphic (*.png);;"
+        file_filter += "PDF (*.pdf);;"
+        file_filter += "Encapsulated PostScript File (*.eps);;"
+        file_filter += "PostScript File (*.ps);;"
+        file_filter += "Scalable Vector Graphics (*.svg)"
+
+        url = QFileDialog.getSaveFileName(self, "Save Figure", "", file_filter)
+        filename = url[0]
+        if not filename:
+            return
+        self.fig.savefig(filename, dpi=400.)
 
     def saveCurve(self):
         """
@@ -317,9 +331,9 @@ class HypsometricWindow(QMainWindow):
             # Get active curve
             curve = self.curves[self.active_curve]
             curve.save(filename)
-
         except:
             msg = QMessageBox(parent=self)
+
             msg.setIcon(QMessageBox.Critical)
             msg.setText("Error saving Hypsometric curve")
             msg.setWindowTitle("Error")
@@ -373,15 +387,41 @@ class HypsometricWindow(QMainWindow):
         self.ax.clear()
         self._format_ax(grids=True)
 
+        # If Show All button is checked; show all the curves
         if self.qa_showAll.isChecked():
-            for curva in self.curves:
-                curva.plot(self.ax)
+            cmap = plt.get_cmap(self.cmap)
+            props_id = ["HI", "Kurtosis", "Skewness", "Density Kurtosis", "Density Skewness"]
+            values = []
+            if self.prop == "Id":
+                values = list(range(self.n_curves))
+            else:
+                for curva in self.curves:
+                    values.append(curva.moments[props_id.index(self.prop)])
+            maxvalue = max(values)
+            minvalue = min(values)
+            positions = np.array(values).argsort()
+            for n in positions:
+                curva = self.curves[n]
+                if self.prop == "Id":
+                    val = n
+                    color = cmap(n / self.n_curves)
+                else:
+                    val = curva.moments[props_id.index(self.prop)]
+                    color = cmap((val - minvalue) / (maxvalue-minvalue))
+
+                if self.prop == "Id":
+                    lbl = curva.getName() + " [{}]".format(val)
+                else:
+                    lbl = curva.getName() + " [{:.2f}]".format(val)
+
+                curva.plot(self.ax, c=color, label=lbl)
         else:
+            # If not, draw the active hypsometric curve
             curva.plot(self.ax)
             self.ax.set_title(curva.getName())
 
         if self.qa_showLegend.isChecked():
-            self.ax.legend(loc='lower left', bbox_to_anchor=(1, -0.02))
+            self.ax.legend(loc='lower left', bbox_to_anchor=(1, -0.02), title=self.prop)
 
         if self.qa_showMetrics.isChecked():
             cadena = "HI: {0:.3f}\n".format(curva.getHI())
@@ -397,9 +437,12 @@ class HypsometricWindow(QMainWindow):
         if self.qa_showAll.isChecked():
             self.qa_showMetrics.setChecked(False)
             self.qa_showMetrics.setEnabled(False)
+            self.qa_showLegend.setEnabled(True)
             self._draw()
         else:
             self.qa_showMetrics.setEnabled(True)
+            self.qa_showLegend.setChecked(False)
+            self.qa_showLegend.setEnabled(False)
             self._draw()
 
     def _showLegend(self):
@@ -408,78 +451,99 @@ class HypsometricWindow(QMainWindow):
     def _showMetrics(self):
         self._draw()
 
-    def setColorRamp(self):
-        pass
+    def displaySetting(self):
+        # If no curves have been loaded, return
+        if self.n_curves == 0:
+            return
+        # Show a Color Ramp Dialog
+        dlg = ColorRampDialog()
+        if dlg.exec() == 1:
+            self.prop = dlg.prop_combo.currentText()
+            self.cmap = plt.get_cmap(dlg.cmap_combo.currentText())
+            if dlg.reversed.isChecked():
+                self.cmap = self.cmap.reversed()
 
-    
+            self._draw()
+
     def nextCurve(self, direction):
         # Handler to tb_button_prev and tb_button_next buttons
         # Select the next / previous curve of the curve list (self.curves)
-        if self.n_curves == 0:
+        if self.n_curves == 0 or self.qa_showAll.isChecked():
             return
         self.active_curve += direction
         self.active_curve = self.active_curve % self.n_curves
         self._draw(all_curves=False)
         
     def setName(self):
-        # Get active channel
-        if self.n_curves > 0:
-            curve = self.curves[self.active_curve]
-        else:
+        if self.n_curves == 0 or self.qa_showAll.isChecked():
             return
-
-        # Show changename dialog
-        text, ok = QInputDialog.getText(self, 'Curve Name', 'Set Curve name:')
+        # Get active channel
+        curve = self.curves[self.active_curve]
+        # Show change_name dialog
+        text, ok = QInputDialog.getText(self, 'Curve Name', 'Set Curve name:', text = curve.getName())
+        # Change the name and draw
         if ok:
             curve.setName(str(text))
-
         self._draw()
 
     def closeEvent(self, event):
-        # Emit closing signal
-        self.window_closed.emit()
-        # Close window
-        event.accept()
+        pass
+        # qm = QMessageBox()
+        # res = qm.question(self, "Exit profiler", "Are you sure you want to exit?\nUnsaved changes will be lost.", qm.Yes|qm.No)
+        # if res == qm.Yes:
+        #     # Remove layers
+        #     for vl in [self.channelVl, self.kpVl, self.regVl]:
+        #         if vl:
+        #             QgsProject.instance().removeMapLayer(vl)
+        #     # Refresh map canvas
+        #     if self.iface:
+        #         self.iface.mapCanvas().refresh()
+        #     # Emit closing signal
+        #     self.window_closed.emit()
+        #     # Close window
+        #     event.accept()
+        # else:
+        #     # Do not close
+        #     event.ignore()
 
     def saveFigures(self):
-        pass
-        # # Check if App has channels
-        # if self.n_curves == 0:
-        #     return
-        #
-        # dlg = QDialog(self)
-        # dlg.setWindowTitle("Figure grid options")
-        # layout = QFormLayout()
-        # items = ["Longitudinal profile", "Chi profile", "Area-slope profile", "ksn profile"]
-        # combo = QComboBox(dlg)
-        # rowSpin = QSpinBox(dlg)
-        # colSpin = QSpinBox(dlg)
-        # rowSpin.setRange(1, 10)
-        # colSpin.setRange(1, 10)
-        # for item in items:
-        #     combo.addItem(item)
-        #
-        # layout.addRow("Graphic type:", combo)
-        # layout.addRow("Rows:", rowSpin)
-        # layout.addRow("Cols:", colSpin)
-        #
-        # dlg.setLayout(layout)
-        #
-        # QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        #
-        # buttonBox = QDialogButtonBox(QBtn)
-        # buttonBox.accepted.connect(dlg.accept)
-        # buttonBox.rejected.connect(dlg.reject)
-        # layout.addRow(buttonBox)
-        #
-        # dlg.setLayout(layout)
-        # dlg.show()
-        # if dlg.exec():
-        #     nrow = rowSpin.value()
-        #     ncol = colSpin.value()
-        #     print("Success! {} rows, {} columns".format(nrow, ncol))
-        # else:
-        #     print("Cancel!")
+        # Check if App has channels
+        if self.n_curves == 0:
+            return
+        # Create a simple dialog to choose nrows and ncols
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Figure grid options")
+        layout = QFormLayout()
+        row_spin = QSpinBox(dlg)
+        col_spin = QSpinBox(dlg)
+        row_spin.setRange(1, 10)
+        col_spin.setRange(1, 10)
+        layout.addRow("Rows:", row_spin)
+        layout.addRow("Cols:", col_spin)
+        dlg.setLayout(layout)
+        QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+        buttonBox = QDialogButtonBox(QBtn)
+        buttonBox.accepted.connect(dlg.accept)
+        buttonBox.rejected.connect(dlg.reject)
+        layout.addRow(buttonBox)
+        dlg.setLayout(layout)
+        dlg.show()
+        if dlg.exec():
+            nrow = row_spin.value()
+            ncol = col_spin.value()
+
+            # Get the file name
+            file_filter = "Portable Network Graphic (*.png);;"
+            file_filter += "PDF (*.pdf);;"
+            file_filter += "Encapsulated PostScript File (*.eps);;"
+            file_filter += "PostScript File (*.ps);;"
+            file_filter += "Scalable Vector Graphics (*.svg)"
+
+            url = QFileDialog.getSaveFileName(self, "Save Figure", "", file_filter)
+            filename = url[0]
+            if not filename:
+                return
+            # Create a new figure
 
 def main():
     app = QApplication(sys.argv)

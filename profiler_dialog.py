@@ -1259,7 +1259,7 @@ class ProfilerWindow(QMainWindow):
         self._draw()
         
     def setName(self):
-        ## Get active channel
+        # Get the active channel
         if self.n_channels > 0:
             canal = self.channels[self.active_channel]
         else:
@@ -1276,7 +1276,7 @@ class ProfilerWindow(QMainWindow):
         """
         Smooth channel elevations by applying a moving average
         """
-        ## Get active channel
+        # Get active channel
         if self.n_channels > 0:
             canal = self.channels[self.active_channel]
         else:
@@ -1316,8 +1316,6 @@ class ProfilerWindow(QMainWindow):
             event.ignore()
             
     def saveFigures(self):
-        
-        
         # Check if App has channels
         if self.n_channels == 0:
             return
