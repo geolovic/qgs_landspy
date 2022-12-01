@@ -46,3 +46,37 @@ class ColorRampDialog(QDialog):
         layout.addRow(self.buttonBox)
         self.setLayout(layout)
         self.show()
+
+
+class FigureGridDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Figure Grid options")
+        self.GUI()
+
+    def GUI(self):
+        # Create SpinBox to select number of rows and cols
+        self.row_spin = QSpinBox(self)
+        self.col_spin = QSpinBox(self)
+        self.row_spin.setRange(1, 10)
+        self.col_spin.setRange(1, 10)
+
+        # Create a CheckBox to show grid or not
+        self.grid = QCheckBox("Show grid lines", self)
+
+        # Create a Form layout and populate rows
+        layout = QFormLayout()
+        layout.addRow("Rows:", self.row_spin)
+        layout.addRow("Cols:", self.col_spin)
+        layout.addRow("", self.grid)
+        self.setLayout(layout)
+
+        # Create button box and add it to layout
+        q_btn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+        buttonbox = QDialogButtonBox(q_btn)
+        buttonbox.accepted.connect(self.accept)
+        buttonbox.rejected.connect(self.reject)
+        layout.addRow(buttonbox)
+
+        self.show()
+

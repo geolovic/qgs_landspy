@@ -8,14 +8,15 @@ Dialog to represent Hypsometric Curves (landspy.HCurve instances)
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-import sys
+import sys, os
+import math
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 from landspy import HCurve
-from dialogs import ColorRampDialog
+from dialogs import ColorRampDialog, FigureGridDialog
 
 
 class HypsometricWindow(QMainWindow):
@@ -391,17 +392,23 @@ class HypsometricWindow(QMainWindow):
         if self.qa_showAll.isChecked():
             cmap = plt.get_cmap(self.cmap)
             props_id = ["HI", "Kurtosis", "Skewness", "Density Kurtosis", "Density Skewness"]
+            # Get property values for the curves
             values = []
             if self.prop == "Id":
                 values = list(range(self.n_curves))
             else:
                 for curva in self.curves:
                     values.append(curva.moments[props_id.index(self.prop)])
+
+            # Get maximum and minimum value (for the color ramp)
             maxvalue = max(values)
             minvalue = min(values)
+            # Sort values
             positions = np.array(values).argsort()
             for n in positions:
+                # Select curve
                 curva = self.curves[n]
+                # Get color from color ramp according property value
                 if self.prop == "Id":
                     val = n
                     color = cmap(n / self.n_curves)
@@ -409,20 +416,25 @@ class HypsometricWindow(QMainWindow):
                     val = curva.moments[props_id.index(self.prop)]
                     color = cmap((val - minvalue) / (maxvalue-minvalue))
 
+                # Labels for the legend. HI and other properties will have only 2 decimals
                 if self.prop == "Id":
                     lbl = curva.getName() + " [{}]".format(val)
                 else:
                     lbl = curva.getName() + " [{:.2f}]".format(val)
 
+                # Plot curve, with corresponding color and label
                 curva.plot(self.ax, c=color, label=lbl)
         else:
-            # If not, draw the active hypsometric curve
+            # If not, simply draw the active hypsometric curve
             curva.plot(self.ax)
             self.ax.set_title(curva.getName())
 
-        if self.qa_showLegend.isChecked():
+        # Show legend if button is checked
+        # If more than 17 curves in the plot, do not show legend
+        if self.qa_showLegend.isChecked() and self.n_curves <= 17:
             self.ax.legend(loc='lower left', bbox_to_anchor=(1, -0.02), title=self.prop)
 
+        # Show metrics in upper right corner if qa_showMetrics is checked
         if self.qa_showMetrics.isChecked():
             cadena = "HI: {0:.3f}\n".format(curva.getHI())
             cadena += "KU: {0:.3f}\n".format(curva.getKurtosis())
@@ -430,7 +442,7 @@ class HypsometricWindow(QMainWindow):
             cadena += "DK: {0:.3f}\n".format(curva.getDensityKurtosis())
             cadena += "DS: {0:.3f}".format(curva.getDensitySkewness())
             self.ax.text(0.775, 0.97, cadena, size=11, verticalalignment="top")
-
+        # Refresh canvas
         self.canvas.draw()
 
     def _showAll(self):
@@ -487,52 +499,24 @@ class HypsometricWindow(QMainWindow):
         self._draw()
 
     def closeEvent(self, event):
-        pass
-        # qm = QMessageBox()
-        # res = qm.question(self, "Exit profiler", "Are you sure you want to exit?\nUnsaved changes will be lost.", qm.Yes|qm.No)
-        # if res == qm.Yes:
-        #     # Remove layers
-        #     for vl in [self.channelVl, self.kpVl, self.regVl]:
-        #         if vl:
-        #             QgsProject.instance().removeMapLayer(vl)
-        #     # Refresh map canvas
-        #     if self.iface:
-        #         self.iface.mapCanvas().refresh()
-        #     # Emit closing signal
-        #     self.window_closed.emit()
-        #     # Close window
-        #     event.accept()
-        # else:
-        #     # Do not close
-        #     event.ignore()
+        # Emit closing signal
+        self.window_closed.emit()
+        # Close window
+        event.accept()
 
     def saveFigures(self):
         # Check if App has channels
         if self.n_curves == 0:
             return
         # Create a simple dialog to choose nrows and ncols
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Figure grid options")
-        layout = QFormLayout()
-        row_spin = QSpinBox(dlg)
-        col_spin = QSpinBox(dlg)
-        row_spin.setRange(1, 10)
-        col_spin.setRange(1, 10)
-        layout.addRow("Rows:", row_spin)
-        layout.addRow("Cols:", col_spin)
-        dlg.setLayout(layout)
-        QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-        buttonBox = QDialogButtonBox(QBtn)
-        buttonBox.accepted.connect(dlg.accept)
-        buttonBox.rejected.connect(dlg.reject)
-        layout.addRow(buttonBox)
-        dlg.setLayout(layout)
-        dlg.show()
-        if dlg.exec():
-            nrow = row_spin.value()
-            ncol = col_spin.value()
+        dlg = FigureGridDialog()
 
-            # Get the file name
+        if dlg.exec():
+            nrow = dlg.row_spin.value()
+            ncol = dlg.col_spin.value()
+            grid = dlg.grid.isChecked()
+
+            # Get the file name with a QFileDialog
             file_filter = "Portable Network Graphic (*.png);;"
             file_filter += "PDF (*.pdf);;"
             file_filter += "Encapsulated PostScript File (*.eps);;"
@@ -543,7 +527,44 @@ class HypsometricWindow(QMainWindow):
             filename = url[0]
             if not filename:
                 return
-            # Create a new figure
+            f_name, extension = os.path.splitext(filename)
+
+            # Create the figure
+            n_sheets = math.ceil(self.n_curves / (nrow * ncol))
+            idf = 0
+            for m in range(n_sheets):
+                # By default, A4 size
+                fig = plt.figure(figsize=(8.2, 11.6))
+                for n in range(1, nrow * ncol + 1):
+                    ax = fig.add_subplot(nrow, ncol, n)
+                    curva = self.curves[idf]
+                    curva.plot(ax)
+
+                    # Format Axe
+                    ax.set_xlim((0, 1))
+                    ax.set_ylim((0, 1))
+                    ax.set_xlabel("Relative area (a/A)")
+                    ax.set_aspect("equal")
+                    ax.set_title(curva.getName())
+                    ax.set_ylabel("Relative elevation (h/H)")
+
+                    # Show grid if was specified
+                    if grid:
+                        # Locators for X-Y axis and grid
+                        ax.xaxis.set_major_locator(ticker.MultipleLocator(0.2))
+                        ax.yaxis.set_major_locator(ticker.MultipleLocator(0.2))
+                        ax.grid(True, which='major', axis="both", linestyle="-", c="0.8", lw=0.75)
+
+                    # Remove labels from Y axis except for the first graphic of each row
+                    if idf % ncol:
+                        ax.set_yticklabels([])
+                        ax.set_ylabel("")
+
+                    idf += 1
+                    if idf >= self.n_curves:
+                        break
+                plt.tight_layout()
+                fig.savefig("{}_{:02d}{}".format(f_name, m, extension))
 
 def main():
     app = QApplication(sys.argv)
