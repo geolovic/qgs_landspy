@@ -11,6 +11,7 @@ from PyQt5.QtGui import *
 
 import sys
 
+
 class ColorRampDialog(QDialog):
 
     def __init__(self, parent=None, cm="RdYlBu", prop="Id"):
@@ -80,3 +81,38 @@ class FigureGridDialog(QDialog):
 
         self.show()
 
+
+class FigureGridDialog2(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Figure Grid options")
+        self.GUI()
+
+    def GUI(self):
+        # ComboBox to define type of graphic
+        items = ["Longitudinal profile", "Chi profile", "Area-slope profile", "ksn profile"]
+        self.combo = QComboBox(self)
+        for item in items:
+            self.combo.addItem(item)
+
+        # SpinBoxes to select rows and cols
+        self.row_spin = QSpinBox(self)
+        self.col_spin = QSpinBox(self)
+        self.row_spin.setRange(1, 10)
+        self.col_spin.setRange(1, 10)
+
+        # Create a Form layout and populate rows
+        layout = QFormLayout()
+        layout.addRow("Graphic type:", self.combo)
+        layout.addRow("Rows:", self.row_spin)
+        layout.addRow("Cols:", self.col_spin)
+        self.setLayout(layout)
+
+        # Create button box and add it to layout
+        q_btn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+        buttonbox = QDialogButtonBox(q_btn)
+        buttonbox.accepted.connect(self.accept)
+        buttonbox.rejected.connect(self.reject)
+        layout.addRow(buttonbox)
+
+        self.show()

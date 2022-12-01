@@ -8,7 +8,8 @@ Dialog to represent Hypsometric Curves (landspy.HCurve instances)
 from PyQt5.QtWidgets import *
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
-import sys, os
+import sys
+import os
 import math
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
@@ -16,13 +17,12 @@ import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 import numpy as np
 from landspy import HCurve
-from dialogs import ColorRampDialog, FigureGridDialog
+from .dialogs import ColorRampDialog, FigureGridDialog
 
 
 class HypsometricWindow(QMainWindow):
-    
     window_closed = pyqtSignal()
-    
+
     def __init__(self, parent=None, iface=None, app_path=""):
 
         # Init constructor with a parent window
@@ -33,7 +33,7 @@ class HypsometricWindow(QMainWindow):
 
         # App path
         self.app_path = app_path
-        
+
         # Reference to QGIS interface (if running inside QGIS)
         self.iface = iface
 
@@ -52,7 +52,7 @@ class HypsometricWindow(QMainWindow):
 
         # Initialize GUI
         self.GUI()
-        
+
     def GUI(self):
         """
         This function creates the Graphic User Interface (buttons and actions)
@@ -62,29 +62,29 @@ class HypsometricWindow(QMainWindow):
         self.canvas = FigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111)
         self._format_ax()
-       
+
         # Configure Canvas as central widget
         self.setCentralWidget(self.canvas)
-        
+
         # Modify initial mainWindow size
         self.resize(750, 550)
-        
+
         # Create Status Bar
         self.statusBar = QStatusBar(self)
         self.setStatusBar(self.statusBar)
-        
+
         # Create App actions (with a private function)
         self._create_actions()
-        
+
         # Add Toolbar
         self._create_toolbar()
-        
+
         # Add Menu
         self._create_menu()
-        
+
         # Show window
         self.show()
-    
+
     def _create_actions(self):
         """
         Private function that create QActions for menu and toolbar
@@ -94,7 +94,7 @@ class HypsometricWindow(QMainWindow):
         self.qa_nextCurve = QAction(QIcon(self.app_path + "icons/arrow-000.png"), "Next", self)
         self.qa_showAll = QAction(QIcon(self.app_path + "icons/all_curves.ico"), "Show all curves", self)
         self.qa_showAll.setCheckable(True)
-        
+
         # Show legend and metrics
         self.qa_showMetrics = QAction(QIcon(self.app_path + "icons/metrics.ico"), "Show Metrics", self)
         self.qa_showLegend = QAction(QIcon(self.app_path + "icons/primary_legend.ico"), "Show Legend", self)
@@ -110,10 +110,13 @@ class HypsometricWindow(QMainWindow):
         self.qa_removeCurve = QAction("Remove curve", self)
         self.qa_saveCurve = QAction("Save curve", self)
 
-        # Tools menu (Smooth channel, Delete knickpoints, Delete regressions)
-        self.qa_displaySetting = QAction("Display settings", self)
+        # Export menu (Save Figure/s, export data)
         self.qa_saveFigure = QAction(QIcon(self.app_path + "icons/savefig.png"), "Save Figure", self)
         self.qa_saveFigures = QAction("Save Figures", self)
+        self.qa_exportMetrics = QAction("Export metrics", self)
+
+        # Tools menu (Display setting, set curve names)
+        self.qa_displaySetting = QAction("Display settings", self)
         self.qa_setName = QAction("Set Name", self)
 
         # ===============================================================================
@@ -126,7 +129,7 @@ class HypsometricWindow(QMainWindow):
         # Show legend and metrics
         self.qa_showMetrics.triggered.connect(self._showMetrics)
         self.qa_showLegend.triggered.connect(self._showLegend)
-        
+
         # Load, Save, Remove, Add, SaveCurrent
         self.qa_loadCurves.triggered.connect(self.loadCurves)
         self.qa_saveCurves.triggered.connect(self.saveCurves)
@@ -134,12 +137,15 @@ class HypsometricWindow(QMainWindow):
         self.qa_removeCurve.triggered.connect(self.removeCurve)
         self.qa_loadCurve.triggered.connect(self.loadCurve)
         self.qa_saveCurve.triggered.connect(self.saveCurve)
-        
+
+        # Export
+        self.qa_saveFigure.triggered.connect(self.saveFigure)
+        self.qa_saveFigures.triggered.connect(self.saveFigures)
+        self.qa_exportMetrics.triggered.connect(self.exportMetrics)
+
         # Tools
         self.qa_displaySetting.triggered.connect(self.displaySetting)
         self.qa_setName.triggered.connect(self.setName)
-        self.qa_saveFigure.triggered.connect(self.saveFigure)
-        self.qa_saveFigures.triggered.connect(self.saveFigures)
 
     def _create_toolbar(self):
         """
@@ -169,7 +175,7 @@ class HypsometricWindow(QMainWindow):
         editmenu = menubar.addMenu("&Edit")
         export_menu = menubar.addMenu("E&xport")
         tools_menu = menubar.addMenu("&Tools")
-        
+
         # Add actions to menus
         file_menu.addAction(self.qa_loadCurves)
         file_menu.addAction(self.qa_saveCurves)
@@ -177,6 +183,7 @@ class HypsometricWindow(QMainWindow):
         editmenu.addAction(self.qa_loadCurve)
         editmenu.addAction(self.qa_removeCurve)
         editmenu.addAction(self.qa_saveCurve)
+        export_menu.addAction(self.qa_exportMetrics)
         export_menu.addAction(self.qa_saveFigure)
         export_menu.addAction(self.qa_saveFigures)
         tools_menu.addAction(self.qa_setName)
@@ -215,7 +222,7 @@ class HypsometricWindow(QMainWindow):
             return
         mess = ""
 
-        #try:
+        # try:
         curves = np.load(filename, allow_pickle=True)
         curve = curves[0]
 
@@ -334,12 +341,11 @@ class HypsometricWindow(QMainWindow):
             curve.save(filename)
         except:
             msg = QMessageBox(parent=self)
-
             msg.setIcon(QMessageBox.Critical)
             msg.setText("Error saving Hypsometric curve")
             msg.setWindowTitle("Error")
             msg.show()
-            
+
     def loadCurve(self):
         """
         Loads a hypsometric curve (.txt file) into the App
@@ -414,7 +420,7 @@ class HypsometricWindow(QMainWindow):
                     color = cmap(n / self.n_curves)
                 else:
                     val = curva.moments[props_id.index(self.prop)]
-                    color = cmap((val - minvalue) / (maxvalue-minvalue))
+                    color = cmap((val - minvalue) / (maxvalue - minvalue))
 
                 # Labels for the legend. HI and other properties will have only 2 decimals
                 if self.prop == "Id":
@@ -485,14 +491,14 @@ class HypsometricWindow(QMainWindow):
         self.active_curve += direction
         self.active_curve = self.active_curve % self.n_curves
         self._draw(all_curves=False)
-        
+
     def setName(self):
         if self.n_curves == 0 or self.qa_showAll.isChecked():
             return
         # Get active channel
         curve = self.curves[self.active_curve]
         # Show change_name dialog
-        text, ok = QInputDialog.getText(self, 'Curve Name', 'Set Curve name:', text = curve.getName())
+        text, ok = QInputDialog.getText(self, 'Curve Name', 'Set Curve name:', text=curve.getName())
         # Change the name and draw
         if ok:
             curve.setName(str(text))
@@ -503,6 +509,37 @@ class HypsometricWindow(QMainWindow):
         self.window_closed.emit()
         # Close window
         event.accept()
+
+    def exportMetrics(self):
+        """
+        Export all metrics of curves (HI, Kurtosis, Skewness, etc.)
+        """
+        # Check if App has curves
+        if self.n_curves == 0:
+            return
+
+        dlg = QFileDialog(self)
+        file_filter = "Text file (*.txt);;"
+        file_filter += "All Files (*.*)"
+
+        url = QFileDialog.getSaveFileName(self, "Export metrics", "", file_filter)
+        filename = url[0]
+        if not filename:
+            return
+
+        fw = open(filename, "w")
+        fw.write("Name;HI;KUR;SK;DKUR;DSK\n")
+        for curva in self.curves:
+            name = curva.getName()
+            hi = curva.getHI()
+            kur = curva.getKurtosis()
+            sk = curva.getSkewness()
+            dkur = curva.getDensityKurtosis()
+            dsk = curva.getDensitySkewness()
+            linea = "{};{:.3f};{:.3f};{:.3f};{:.3f};{:.3f}\n".format(name, hi, kur, sk, dkur, dsk)
+
+        fw.close()
+        QMessageBox.about(self, "Hypsometric Curve", "Data exported to\n{}".format(filename))
 
     def saveFigures(self):
         # Check if App has channels
@@ -565,6 +602,8 @@ class HypsometricWindow(QMainWindow):
                         break
                 plt.tight_layout()
                 fig.savefig("{}_{:02d}{}".format(f_name, m, extension))
+            QMessageBox.about(self, "Hypsometric Curve", "Figure/s saved successfully")
+
 
 def main():
     app = QApplication(sys.argv)
@@ -575,4 +614,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

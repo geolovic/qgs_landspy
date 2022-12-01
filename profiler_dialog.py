@@ -20,13 +20,17 @@ try:
 except:
     print("No qgis module")
 
-import sys, os
+import sys
+import os
+import math
 from osgeo import ogr, osr
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavToolBar
 from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 import numpy as np
 from landspy import Channel
+from .dialogs import FigureGridDialog2
 
 
 class ProfilerWindow(QMainWindow):
@@ -78,7 +82,230 @@ class ProfilerWindow(QMainWindow):
         
         # Initialize GUI
         self.GUI()
-        
+
+    def _create_actions(self):
+        """
+        Función interna que crea QActions (botones y acciones para menu y toolbar)
+        """
+        # Next - Prev
+        self.qa_previousChannel = QAction(QIcon(self.app_path + "icons/arrow-180.png"), "Previous", self)
+        self.qa_nextChannel = QAction(QIcon(self.app_path + "icons/arrow-000.png"), "Next", self)
+
+        # Graphic types
+        self.qa_longProfile = QAction(QIcon(self.app_path + "icons/long_prof.ico"), "Longitudinal profile", self)
+        self.qa_chiProfile = QAction(QIcon(self.app_path + "icons/chi_prof.ico"), "Chi profile", self)
+        self.qa_asProfile = QAction(QIcon(self.app_path + "icons/loglog_prof.ico"), "Area-slope profile", self)
+        self.qa_ksnProfile = QAction(QIcon(self.app_path + "icons/ksn_prof.ico"), "ksn profile", self)
+
+        # Capture points modes
+        self.qa_setKP = QAction(QIcon(self.app_path + "icons/flag.ico"), "Set knickpoint", self)
+        self.qa_setRegression = QAction(QIcon(self.app_path + "icons/reg.ico"), "Set regression", self)
+        self.qa_removeDam = QAction(QIcon(self.app_path + "icons/dam.ico"), "Remove dam", self)
+        self.qa_setKP.setCheckable(True)
+        self.qa_setRegression.setCheckable(True)
+        self.qa_removeDam.setCheckable(True)
+
+        # Number of points (for area-slope and ksn)
+        self.qlbl_nPoint = QLabel("N Points:")
+        self.qspin_nPoint = QSpinBox()
+        self.qa_applyNpoint = QAction(QIcon(self.app_path + "icons/apply_icon.png"), "Apply", self)
+        self.qspin_nPoint.setFocusPolicy(Qt.NoFocus)
+        self.qspin_nPoint.setRange(1, 200)
+
+        # Reset elevations
+        self.qa_zReset = QAction(QIcon(self.app_path + "icons/arrow-circle.png"), "Reset Elevations", self)
+
+        # File menu (Load, Save, Close)
+        self.qa_loadChannels = QAction("Load channels", self)
+        self.qa_saveChannels = QAction("Save channels", self)
+        self.qa_close = QAction("Close", self)
+
+        # Edit menu (Add Channel, Remove Channel, Save Channel)
+        self.qa_addChannel = QAction("Add channel", self)
+        self.qa_removeChannel = QAction("Remove channel", self)
+        self.qa_saveChannel = QAction("Save channel", self)
+
+        # Export menu (Export Data, Save Figure)
+        self.qa_exportChannelData = QAction("Export channel data", self)
+        self.qa_saveFig = QAction(QIcon(self.app_path + "icons/savefig.png"), "Save Figure", self)
+        self.qa_saveFigs = QAction("Save figures", self)
+
+        # Tools menu (Smooth channel, Delete knickpoints, Delete regressions)
+        self.qa_smooth = QAction("Smooth channel", self)
+        self.qa_deleteKP = QAction("Delete knickpoints", self)
+        self.qa_deleteReg = QAction("Delete regressions", self)
+        self.qa_setName = QAction("Change channel name", self)
+
+        # ===============================================================================
+        # Connect Actions and Buttons to functions
+
+        # Next - Prev
+        self.qa_previousChannel.triggered.connect(lambda x: self.nextProfile(-1))
+        self.qa_nextChannel.triggered.connect(lambda x: self.nextProfile(1))
+
+        # Graphic types
+        self.qa_longProfile.triggered.connect(lambda x: self.changeProfileGraph(1))
+        self.qa_chiProfile.triggered.connect(lambda x: self.changeProfileGraph(2))
+        self.qa_asProfile.triggered.connect(lambda x: self.changeProfileGraph(3))
+        self.qa_ksnProfile.triggered.connect(lambda x: self.changeProfileGraph(4))
+
+        # Capture points modes
+        self.qa_setKP.triggered.connect(self.setKP)
+        self.qa_setRegression.triggered.connect(self.setRegression)
+        self.qa_removeDam.triggered.connect(self.removeDam)
+
+        # Number of points (for area-slope and ksn)
+        self.qa_applyNpoint.triggered.connect(self.calculateGradients)
+
+        # Load, Save, Remove, Add, SaveCurrent
+        self.qa_loadChannels.triggered.connect(self.loadChannels)
+        self.qa_saveChannels.triggered.connect(self.saveChannels)
+        self.qa_close.triggered.connect(self.close)
+        self.qa_removeChannel.triggered.connect(self.removeChannel)
+        self.qa_addChannel.triggered.connect(self.loadChannel)
+        self.qa_saveChannel.triggered.connect(self.saveChannel)
+
+        # Export
+        self.qa_exportChannelData.triggered.connect(self.exportChannelData)
+        self.qa_saveFig.triggered.connect(self.saveFigure)
+        self.qa_saveFigs.triggered.connect(self.saveFigures)
+
+        # Tools
+        self.qa_zReset.triggered.connect(self.zReset)
+        self.qa_setName.triggered.connect(self.setName)
+        self.qa_smooth.triggered.connect(self.smoothElevations)
+
+    def _create_toolbar(self):
+        """
+        Función interna para crear la barra de herramientas principal de Aplicación
+        """
+        # Creamos barra de herramientas
+        toolbar = QToolBar("Action toolbar", self)
+        toolbar.setIconSize(QSize(23, 23))
+        self.addToolBar(toolbar)
+
+        # Add Navigation toolbar and create references to the buttoms we want to maintain ("Home", "Pan", "Zoom")
+        navtoolbar = NavToolBar(self.canvas, self)
+        for action in navtoolbar.actions():
+            if action.text() == "Home":
+                self.qa_Home = action
+            elif action.text() == "Pan":
+                self.qa_Pan = action
+            elif action.text() == "Zoom":
+                self.qa_Zoom = action
+            else:
+                navtoolbar.removeAction(action)
+        toolbar.addWidget(navtoolbar)
+
+        # Add all the other buttons
+        toolbar.addAction(self.qa_previousChannel)
+        toolbar.addAction(self.qa_nextChannel)
+        toolbar.addAction(self.qa_longProfile)
+        toolbar.addAction(self.qa_chiProfile)
+        toolbar.addAction(self.qa_asProfile)
+        toolbar.addAction(self.qa_ksnProfile)
+        toolbar.addAction(self.qa_setKP)
+        toolbar.addAction(self.qa_setRegression)
+        toolbar.addAction(self.qa_removeDam)
+        toolbar.addWidget(self.qlbl_nPoint)
+        toolbar.addWidget(self.qspin_nPoint)
+        toolbar.addAction(self.qa_applyNpoint)
+        toolbar.addAction(self.qa_zReset)
+        toolbar.addAction(self.qa_saveFig)
+        toolbar.setStyleSheet("QToolBar{spacing:2px;}")
+
+        # Connect buttosn Zoom, Pan and Home
+        self.qa_Pan.changed.connect(self.panChanged)
+        self.qa_Zoom.changed.connect(self.zoomChanged)
+        self.qa_Home.triggered.connect(self.home)
+
+    def _create_menu(self):
+        """
+        Función interna para crear el menú de la aplicación
+        """
+        # Create empty menu bar and add different menus
+        menubar = self.menuBar()
+        filemenu = menubar.addMenu("&File")
+        editmenu = menubar.addMenu("&Edit")
+        exportmenu = menubar.addMenu("E&xport")
+        toolsmenu = menubar.addMenu("&Tools")
+
+        # Add actions to menus
+        filemenu.addAction(self.qa_loadChannels)
+        filemenu.addAction(self.qa_saveChannels)
+        filemenu.addAction(self.qa_close)
+        editmenu.addAction(self.qa_addChannel)
+        editmenu.addAction(self.qa_removeChannel)
+        editmenu.addAction(self.qa_saveChannel)
+        exportmenu.addAction(self.qa_exportChannelData)
+        exportmenu.addAction(self.qa_saveFig)
+        exportmenu.addAction(self.qa_saveFigs)
+        toolsmenu.addAction(self.qa_smooth)
+        toolsmenu.addAction(self.qa_zReset)
+        toolsmenu.addAction(self.qa_setName)
+
+    def _update_buttons(self):
+        """
+        This function update buttons (activate-deactivate) according the kind of profile being drawing
+        """
+        # Longitudinal profile
+        if self.mode == 1:
+            self.qa_setRegression.setEnabled(False)
+            self.qa_removeDam.setEnabled(True)
+            self.qspin_nPoint.setValue(self.qspin_nPoint.minimum())
+            self.qspin_nPoint.setEnabled(False)
+            self.qa_applyNpoint.setEnabled(False)
+
+        # Chi profile
+        elif self.mode == 2:
+            self.qa_setRegression.setEnabled(True)
+            self.qa_removeDam.setEnabled(True)
+            self.qspin_nPoint.setValue(self.qspin_nPoint.minimum())
+            self.qspin_nPoint.setEnabled(False)
+            self.qa_applyNpoint.setEnabled(False)
+
+        # Area-slope profile
+        elif self.mode == 3:
+            self.qa_setRegression.setEnabled(False)
+            self.qa_removeDam.setEnabled(False)
+
+            self.qspin_nPoint.setEnabled(True)
+            if self.n_channels > 0:
+                self.qspin_nPoint.setValue(self.channels[self.active_channel]._slp_np)
+            else:
+                self.qspin_nPoint.setValue(self.qspin_nPoint.minimum())
+
+            self.qa_applyNpoint.setEnabled(True)
+
+        # ksn profile
+        elif self.mode == 4:
+            self.qa_setRegression.setEnabled(False)
+            self.qa_removeDam.setEnabled(False)
+
+            self.qspin_nPoint.setEnabled(True)
+            if self.n_channels > 0:
+                self.qspin_nPoint.setValue(self.channels[self.active_channel]._ksn_np)
+            else:
+                self.qspin_nPoint.setValue(self.qspin_nPoint.minimum())
+
+            self.qa_applyNpoint.setEnabled(True)
+
+        # Restart self.regression list
+        self.current_regression = []
+
+    def _update_checked_buttons(self, button):
+        # Only one button can be checked at time. This function "uncheck" all buttons except the
+        # button passed as argument
+
+        buttons = [self.qa_setKP, self.qa_setRegression, self.qa_removeDam, self.qa_Zoom, self.qa_Pan]
+
+        if button in buttons:
+            buttons.remove(button)
+
+        for btn in buttons:
+            if btn.isChecked():
+                btn.trigger()
+
     def GUI(self):
         """
         This function creates the Graphic User Interface (buttons and actions)
@@ -111,251 +338,7 @@ class ProfilerWindow(QMainWindow):
         
         # Mostramos ventana
         self.show()
-    
-    def _create_actions(self):
-        """
-        Función interna que crea QActions (botones y acciones para menu y toolbar)
-        """
-        # Next - Prev
-        self.qa_previousChannel = QAction(QIcon(self.app_path + "icons/arrow-180.png"), "Previous", self)
-        self.qa_nextChannel = QAction(QIcon(self.app_path + "icons/arrow-000.png"), "Next", self)
-        
-        # Graphic types
-        self.qa_longProfile = QAction(QIcon(self.app_path + "icons/long_prof.ico"), "Longitudinal profile", self)
-        self.qa_chiProfile = QAction(QIcon(self.app_path + "icons/chi_prof.ico"), "Chi profile", self)
-        self.qa_asProfile = QAction(QIcon(self.app_path + "icons/loglog_prof.ico"), "Area-slope profile", self)
-        self.qa_ksnProfile = QAction(QIcon(self.app_path + "icons/ksn_prof.ico"), "ksn profile", self)
-        
-        # Capture points modes
-        self.qa_setKP = QAction(QIcon(self.app_path + "icons/flag.ico"), "Set knickpoint", self)
-        self.qa_setRegression = QAction(QIcon(self.app_path + "icons/reg.ico"), "Set regression", self)
-        self.qa_removeDam = QAction(QIcon(self.app_path + "icons/dam.ico"), "Remove dam", self)
-        self.qa_setKP.setCheckable(True)
-        self.qa_setRegression.setCheckable(True)
-        self.qa_removeDam.setCheckable(True)
-        
-        # Number of points (for area-slope and ksn)
-        self.qlbl_nPoint = QLabel("N Points:")
-        self.qspin_nPoint = QSpinBox()
-        self.qa_applyNpoint = QAction(QIcon(self.app_path + "icons/apply_icon.png"), "Apply", self)
-        self.qspin_nPoint.setFocusPolicy(Qt.NoFocus)
-        self.qspin_nPoint.setRange(1, 200)
-        
-        # Reset elevations
-        self.qa_zReset = QAction(QIcon(self.app_path + "icons/arrow-circle.png"), "Reset Elevations", self)
-       
-        # File menu (Load, Save, Close)
-        self.qa_loadChannels = QAction("Load channels", self) 
-        self.qa_saveChannels = QAction("Save channels", self)
-        self.qa_close = QAction("Close", self)
-        
-        # Edit menu (Add Channel, Remove Channel, Save Channel)
-        self.qa_addChannel = QAction("Add channel", self)
-        self.qa_removeChannel = QAction("Remove channel", self)
-        self.qa_saveChannel = QAction("Save channel", self)
-        
-        # Export menu (Export Data, Save Figure)
-        self.qa_exportChannelData = QAction("Export channel data", self)
-        self.qa_saveFig = QAction(QIcon(self.app_path + "icons/savefig.png"), "Save Figure", self)
-        self.qa_saveFigs = QAction("Save figures", self)
-        
-        # Tools menu (Smooth channel, Delete knickpoints, Delete regressions)
-        self.qa_smooth = QAction("Smooth channel", self)
-        self.qa_deleteKP = QAction("Delete knickpoints", self)
-        self.qa_deleteReg = QAction("Delete regressions", self)
-        self.qa_setName = QAction("Change channel name", self)
-        
-        # ===============================================================================
-        # Connect Actions and Buttons to functions
-        
-        # Next - Prev
-        self.qa_previousChannel.triggered.connect(lambda x: self.nextProfile(-1))
-        self.qa_nextChannel.triggered.connect(lambda x: self.nextProfile(1))
-        
-        # Graphic types
-        self.qa_longProfile.triggered.connect(lambda x: self.changeProfileGraph(1))
-        self.qa_chiProfile.triggered.connect(lambda x: self.changeProfileGraph(2))
-        self.qa_asProfile.triggered.connect(lambda x: self.changeProfileGraph(3))
-        self.qa_ksnProfile.triggered.connect(lambda x: self.changeProfileGraph(4))
-        
-        # Capture points modes
-        self.qa_setKP.triggered.connect(self.setKP)
-        self.qa_setRegression.triggered.connect(self.setRegression)
-        self.qa_removeDam.triggered.connect(self.removeDam)
-        
-        # Number of points (for area-slope and ksn)
-        self.qa_applyNpoint.triggered.connect(self.calculateGradients)
-        
-        # Load, Save, Remove, Add, SaveCurrent
-        self.qa_loadChannels.triggered.connect(self.loadChannels)
-        self.qa_saveChannels.triggered.connect(self.saveChannels)
-        self.qa_close.triggered.connect(self.close)
-        self.qa_removeChannel.triggered.connect(self.removeChannel)
-        self.qa_addChannel.triggered.connect(self.loadChannel)
-        self.qa_saveChannel.triggered.connect(self.saveChannel)
-        
-        # Export 
-        self.qa_exportChannelData.triggered.connect(self.exportChannelData)
-        self.qa_saveFig.triggered.connect(self.saveFigure)
-        self.qa_saveFigs.triggered.connect(self.saveFigures)
-        
-        # Tools
-        self.qa_zReset.triggered.connect(self.zReset)
-        self.qa_setName.triggered.connect(self.setName)
-        self.qa_smooth.triggered.connect(self.smoothElevations)
-             
-    def _create_toolbar(self):
-        """
-        Función interna para crear la barra de herramientas principal de Aplicación
-        """
-        # Creamos barra de herramientas
-        toolbar = QToolBar("Action toolbar", self)
-        toolbar.setIconSize(QSize(23,23))
-        self.addToolBar(toolbar)
-        
-        # Add Navigation toolbar and create references to the buttoms we want to maintain ("Home", "Pan", "Zoom")
-        navtoolbar = NavToolBar(self.canvas, self)
-        for action in navtoolbar.actions():
-            if action.text() == "Home":
-                self.qa_Home = action
-            elif action.text() == "Pan":
-                self.qa_Pan = action
-            elif action.text() == "Zoom":
-                self.qa_Zoom = action
-            else:
-                navtoolbar.removeAction(action)
-        toolbar.addWidget(navtoolbar)
-        
-        # Add all the other buttons
-        toolbar.addAction(self.qa_previousChannel)
-        toolbar.addAction(self.qa_nextChannel)
-        toolbar.addAction(self.qa_longProfile)
-        toolbar.addAction(self.qa_chiProfile)
-        toolbar.addAction(self.qa_asProfile)
-        toolbar.addAction(self.qa_ksnProfile)
-        toolbar.addAction(self.qa_setKP)
-        toolbar.addAction(self.qa_setRegression)
-        toolbar.addAction(self.qa_removeDam)
-        toolbar.addWidget(self.qlbl_nPoint)
-        toolbar.addWidget(self.qspin_nPoint)
-        toolbar.addAction(self.qa_applyNpoint)
-        toolbar.addAction(self.qa_zReset)
-        toolbar.addAction(self.qa_saveFig)
-        toolbar.setStyleSheet("QToolBar{spacing:2px;}")
-        
-        # Connect buttosn Zoom, Pan and Home        
-        self.qa_Pan.changed.connect(self.panChanged)
-        self.qa_Zoom.changed.connect(self.zoomChanged)
-        self.qa_Home.triggered.connect(self.home)
 
-    def _create_menu(self):
-        """
-        Función interna para crear el menú de la aplicación
-        """
-        # Create empty menu bar and add different menus
-        menubar = self.menuBar()
-        filemenu = menubar.addMenu("&File")
-        editmenu = menubar.addMenu("&Edit")
-        exportmenu = menubar.addMenu("E&xport")
-        toolsmenu = menubar.addMenu("&Tools")
-        
-        # Add actions to menus
-        filemenu.addAction(self.qa_loadChannels)
-        filemenu.addAction(self.qa_saveChannels)
-        filemenu.addAction(self.qa_close)
-        editmenu.addAction(self.qa_addChannel)
-        editmenu.addAction(self.qa_removeChannel)
-        editmenu.addAction(self.qa_saveChannel)
-        exportmenu.addAction(self.qa_exportChannelData)
-        exportmenu.addAction(self.qa_saveFig)
-        exportmenu.addAction(self.qa_saveFigs)
-        toolsmenu.addAction(self.qa_smooth)
-        toolsmenu.addAction(self.qa_zReset)
-        toolsmenu.addAction(self.qa_setName)
-         
-    def _update_buttons(self):
-        """
-        This function update buttons (activate-deactivate) according the kind of profile being drawing
-        """
-        # Longitudinal profile
-        if self.mode == 1: 
-            self.qa_setRegression.setEnabled(False)
-            self.qa_removeDam.setEnabled(True)
-            self.qspin_nPoint.setValue(self.qspin_nPoint.minimum())
-            self.qspin_nPoint.setEnabled(False)
-            self.qa_applyNpoint.setEnabled(False)
-        
-        # Chi profile
-        elif self.mode ==2: 
-            self.qa_setRegression.setEnabled(True)
-            self.qa_removeDam.setEnabled(True)
-            self.qspin_nPoint.setValue(self.qspin_nPoint.minimum())
-            self.qspin_nPoint.setEnabled(False)
-            self.qa_applyNpoint.setEnabled(False)
-        
-        # Area-slope profile    
-        elif self.mode == 3: 
-            self.qa_setRegression.setEnabled(False)
-            self.qa_removeDam.setEnabled(False)
-            
-            self.qspin_nPoint.setEnabled(True)
-            if self.n_channels > 0:
-                self.qspin_nPoint.setValue(self.channels[self.active_channel]._slp_np)
-            else:
-                self.qspin_nPoint.setValue(self.qspin_nPoint.minimum())
-            
-            self.qa_applyNpoint.setEnabled(True)
-        
-        # ksn profile
-        elif self.mode == 4:
-            self.qa_setRegression.setEnabled(False)
-            self.qa_removeDam.setEnabled(False)
-            
-            self.qspin_nPoint.setEnabled(True)
-            if self.n_channels > 0:
-                self.qspin_nPoint.setValue(self.channels[self.active_channel]._ksn_np)
-            else:
-                self.qspin_nPoint.setValue(self.qspin_nPoint.minimum())
-            
-            self.qa_applyNpoint.setEnabled(True)
-            
-        # Restart self.regression list
-        self.current_regression = []
-        
-    def _update_checked_buttons(self, button):
-        # Only one button can be checked at time. This function "uncheck" all buttons except the 
-        # button passed as argument
-        
-        buttons = [self.qa_setKP, self.qa_setRegression, self.qa_removeDam, self.qa_Zoom, self.qa_Pan]
-        
-        if button in buttons:
-            buttons.remove(button)
-        
-        for btn in buttons:
-            if btn.isChecked():
-                btn.trigger()
-
-    def saveFigure(self):
-        """
-        Saves the current figure to the disk in raster or vector format
-        """
-        # Check if App has channels
-        if self.n_channels == 0:
-            return
-        
-        file_filter = "Portable Network Graphic (*.png);;"
-        file_filter += "PDF (*.pdf);;"
-        file_filter += "Encapsulated PostScript File (*.eps);;"
-        file_filter += "PostScript File (*.ps);;"
-        file_filter += "Scalable Vector Graphics (*.svg)"
-        
-        url = QFileDialog.getSaveFileName(self, "Save Figure", "", file_filter)
-        filename = url[0]
-        if not filename:
-            return
-        
-        self.fig.savefig(filename, dpi=400.)
-    
     def loadChannels(self):
         """
         Load a channels file into the App. 
@@ -433,34 +416,43 @@ class ProfilerWindow(QMainWindow):
             msg.setWindowTitle("Error")
             msg.show()
     
-    def removeChannel(self):
+    def loadChannel(self):
         """
-        Removes the current channel from the App. 
+        Loads a channel (.dat file) into the App
         """
-        # Check if App has channels
-        if self.n_channels == 0:
+        dlg = QFileDialog(self)
+        name = dlg.getOpenFileName(self, "Load channel")[0]
+        mensaje = "Error loading channel"
+
+        if not name:
             return
-        
-        # Removes current channel (self.active_channel)
-        if self.channels.size == 1:
-            self.channels = np.array([])
-            self.n_channels = 0
-            self.active_channel = None
-        else:
-            self.channels = np.delete(self.channels, self.active_channel)
-            self.n_channels -= 1
+        try:
+            canal = Channel(name)
+
+            # Check if id of the channel already exists
+            id_list = [canal.getOid() for canal in self.channels]
+            if canal.getOid() in id_list:
+                max_id = max(id_list)
+                canal._oid = max_id + 1
+
+            # Add channel to channel list
+            self.channels = np.insert(self.channels, self.active_channel + 1, canal)
+            self.n_channels = len(self.channels)
             self.active_channel += 1
-            self.active_channel = self.active_channel % self.n_channels
-        
-        if self.iface:
-            # If running inside QGIS, update layers
-            self.updateChannelLayer()
-            self.updateKPLayer()
-            self.updateRegLayer()
-        
-        self.maintain_scale = False
-        self._draw()
-        
+            self.maintain_scale = False
+            self._draw()
+
+            if self.iface:
+                # If running inside QGIS, update channel layer
+                self.updateChannelLayer()
+
+        except:
+            msg = QMessageBox(parent=self)
+            msg.setIcon(QMessageBox.Critical)
+            msg.setText(mensaje)
+            msg.setWindowTitle("Error")
+            msg.show()
+
     def saveChannel(self):
         """
         Saves the current channel (.dat file)
@@ -486,44 +478,56 @@ class ProfilerWindow(QMainWindow):
             msg.setText("Error saving channel")
             msg.setWindowTitle("Error")
             msg.show()
-            
-    def loadChannel(self):
+
+    def removeChannel(self):
         """
-        Loads a channel (.dat file) into the App
+        Removes the current channel from the App.
         """
-        dlg = QFileDialog(self)
-        name = dlg.getOpenFileName(self, "Load channel")[0]
-        mensaje = "Error loading channel"
-        
-        if not name:
+        # Check if App has channels
+        if self.n_channels == 0:
             return
-        try:
-            canal = Channel(name)
-            
-            # Check if id of the channel already exists
-            id_list = [canal.getOid() for canal in self.channels]
-            if canal.getOid() in id_list:
-                max_id = max(id_list)
-                canal._oid = max_id + 1
-            
-            # Add channel to channel list
-            self.channels = np.insert(self.channels, self.active_channel + 1, canal)
-            self.n_channels = len(self.channels)
+
+        # Removes current channel (self.active_channel)
+        if self.channels.size == 1:
+            self.channels = np.array([])
+            self.n_channels = 0
+            self.active_channel = None
+        else:
+            self.channels = np.delete(self.channels, self.active_channel)
+            self.n_channels -= 1
             self.active_channel += 1
-            self.maintain_scale = False
-            self._draw()
-            
-            if self.iface:
-                # If running inside QGIS, update channel layer
-                self.updateChannelLayer()
-            
-        except:
-            msg = QMessageBox(parent=self)
-            msg.setIcon(QMessageBox.Critical)
-            msg.setText(mensaje)
-            msg.setWindowTitle("Error")
-            msg.show()
-    
+            self.active_channel = self.active_channel % self.n_channels
+
+        if self.iface:
+            # If running inside QGIS, update layers
+            self.updateChannelLayer()
+            self.updateKPLayer()
+            self.updateRegLayer()
+
+        self.maintain_scale = False
+        self._draw()
+
+    def saveFigure(self):
+        """
+        Saves the current figure to the disk in raster or vector format
+        """
+        # Check if App has channels
+        if self.n_channels == 0:
+            return
+
+        file_filter = "Portable Network Graphic (*.png);;"
+        file_filter += "PDF (*.pdf);;"
+        file_filter += "Encapsulated PostScript File (*.eps);;"
+        file_filter += "PostScript File (*.ps);;"
+        file_filter += "Scalable Vector Graphics (*.svg)"
+
+        url = QFileDialog.getSaveFileName(self, "Save Figure", "", file_filter)
+        filename = url[0]
+        if not filename:
+            return
+
+        self.fig.savefig(filename, dpi=400.)
+
     def createKPLayer(self):
         """
         This functions creates a temporary point layer for Knickpoints and Add it to the map
@@ -965,11 +969,113 @@ class ProfilerWindow(QMainWindow):
                     self._remove_dam()
         
         self._draw()
-    
+
+    def _draw_graph(self, ax,  canal, mode, knickpoints=True, regressions=True, showtitle=True):
+
+        if mode == 1:  # Longitudinal profile
+            if showtitle:
+                title = "Longitudinal profile"
+            else:
+                title=""
+
+            if canal.getName():
+                title += "  [{}]".format(canal.getName())
+            ax.set_title(title)
+            ax.set_xlabel("Distance (m)")
+            ax.set_ylabel("Elevation (m)")
+            di = canal.getD()
+            zi = canal.getZ()
+            ax.plot(di, zi, c="k", lw=1.25, picker=True, pickradius=25)
+
+            # Draw knickpoints
+            if knickpoints and len(canal._kp) > 0:
+                for k in canal._kp:
+                    self.ax.plot(di[k[0]], zi[k[0]], **self.kp_types[k[1]])
+
+        elif mode == 2:  # Chi profile
+            title = "Chi profile ($\Theta$=0.45)"
+            if canal.getName():
+                title += "  [{}]".format(canal.getName())
+            ax.set_title(title)
+            ax.set_xlabel("$\chi$ (m)")
+            ax.set_ylabel("Elevation (m)")
+            chi = canal.getChi()
+            zi = canal.getZ()
+            ax.plot(chi, zi, c="k", lw=1.25, picker=True, pickradius=25)
+
+            # Draw knickpoints
+            if knickpoints and len(canal._kp) > 0:
+                for k in canal._kp:
+                    ax.plot(chi[k[0]], zi[k[0]], **self.kp_types[k[1]])
+
+            # Draw regressions
+            if regressions and len(canal._regressions) > 0:
+                # Channel regressions are tuples (p1, p2, poli, R2)
+                # p1, p2 >> positions of first and second point of the regression
+                # poli >> Polinomial with the regression
+                # R2 >> Determination coeficient of the regression
+                for reg in canal._regressions:
+                    chi1 = chi[reg[1]]
+                    chi2 = chi[reg[2]]
+                    poli = reg[3]
+                    z1 = np.polyval(poli, chi1)
+                    z2 = np.polyval(poli, chi2)
+
+                    ax.plot([chi1, chi2], [z1, z2], c="r", ls="--", lw=1.5)
+
+        elif mode == 3:  # Area-slope profile
+            title = "Area-slope profile"
+            if canal.getName():
+                title += "  [{}]".format(canal.getName())
+            ax.set_title(title)
+            ax.set_xlabel("Area")
+            ax.set_ylabel("Slope")
+
+            # Remove the last vertex, ussually it will be a vertex in the receiver channel and can produce a fliying point
+            ai = canal.getA(cells=False)[:-1]
+            slp = canal.getSlope()[:-1]
+            ax.plot(ai, slp, marker=".", ls="", color="k", mfc="k", ms=5, picker=True, pickradius=10)
+            ax.set_xscale("log")
+            ax.set_yscale("log")
+
+            # Draw knickpoints
+            if knickpoints and (canal._kp) > 0:
+                for k in canal._kp:
+                    ax.plot(ai[k[0]], slp[k[0]], **self.kp_types[k[1]])
+
+        elif mode == 4:  # ksn profile
+            title = "Ksn profile"
+            if canal.getName():
+                title += "  [{}]".format(canal.getName())
+            ax.set_title(title)
+            ax.set_title(title)
+            ax.set_xlabel("Distance (m)")
+            ax.set_ylabel("ksn")
+            di = canal.getD()
+            ksn = canal.getKsn()
+            ax.plot(di, ksn, c="k", lw=1.25, picker=True, pickradius=10)
+
+            # Draw knickpoints
+            if knickpoints and len(canal._kp) > 0:
+                for k in canal._kp:
+                    ax.plot(di[k[0]], ksn[k[0]], **self.kp_types[k[1]])
+
+            # Draw regressions
+            if regressions and len(canal._regressions) > 0:
+                # Channel regressions are tuples (p1, p2, poli, R2)
+                # p1, p2 >> positions of first and second point of the regression
+                # poli >> Polinomial with the regression
+                # R2 >> Determination coeficient of the regression
+                for reg in canal._regressions:
+                    ksn = reg[3][0]
+                    d1 = di[reg[1]]
+                    d2 = di[reg[2]]
+                    ax.plot([d1, d2], [ksn, ksn], c="r", ls="--", lw=1.5)
+
     def _draw(self):
         # Function to draw the active channel in the current graphic mode (self.mode)
         
-        ## Get active channel       
+        # Get active channel
         if self.n_channels > 0:
             canal = self.channels[self.active_channel]
         else:
@@ -981,102 +1087,8 @@ class ProfilerWindow(QMainWindow):
             ylim = self.ax.get_ylim()
 
         self.ax.clear()
-        
-        if self.mode == 1: # Longitudinal profile
-            title = "Longitudinal profile"
-            if canal.getName():
-                title += "  [{}]".format(canal.getName())
-            self.ax.set_title(title)
-            self.ax.set_xlabel("Distance (m)")
-            self.ax.set_ylabel("Elevation (m)")
-            di = canal.getD()
-            zi = canal.getZ()
-            self.ax.plot(di, zi, c="k", lw=1.25, picker=True,  pickradius=25)
-            
-            # Draw knickpoints
-            if len(canal._kp) > 0:
-                for k in canal._kp:
-                    self.ax.plot(di[k[0]], zi[k[0]], **self.kp_types[k[1]])
-                      
-        elif self.mode == 2: # Chi profile
-            title = "Chi profile ($\Theta$=0.45)"
-            if canal.getName():
-                title += "  [{}]".format(canal.getName())
-            self.ax.set_title(title)
-            self.ax.set_xlabel("$\chi$ (m)")
-            self.ax.set_ylabel("Elevation (m)")  
-            chi = canal.getChi()
-            zi = canal.getZ()
-            self.ax.plot(chi, zi, c="k", lw=1.25, picker=True, pickradius=25)
-            
-            # Draw knickpoints
-            if len(canal._kp) > 0:
-                for k in canal._kp:
-                    self.ax.plot(chi[k[0]], zi[k[0]], **self.kp_types[k[1]])
-                    
-            # Draw regressions
-            if len(canal._regressions) > 0:
-                # Channel regressions are tuples (p1, p2, poli, R2)
-                # p1, p2 >> positions of first and second point of the regression
-                # poli >> Polinomial with the regression
-                # R2 >> Determination coeficient of the regression
-                for reg in canal._regressions:
-                    chi1 = chi[reg[1]]
-                    chi2 = chi[reg[2]]
-                    poli = reg[3]
-                    z1 = np.polyval(poli, chi1)
-                    z2 = np.polyval(poli, chi2)
-                    
-                    self.ax.plot([chi1, chi2], [z1, z2], c="r", ls="--", lw=1.5)
-        
-        elif self.mode == 3: # Area-slope profile
-            title = "Area-slope profile"
-            if canal.getName():
-                title += "  [{}]".format(canal.getName())
-            self.ax.set_title(title)
-            self.ax.set_xlabel("Area")
-            self.ax.set_ylabel("Slope")
-            # Remove the last vertex, ussually it will be a vertex in the receiver channel and can produce a fliying point
-            ai= canal.getA(cells=False)[:-1]
-            slp = canal.getSlope()[:-1]
-            self.ax.plot(ai, slp, marker=".", ls = "", color="k", mfc="k", ms=5, picker=True, pickradius=10)
-            self.ax.set_xscale("log")
-            self.ax.set_yscale("log")
-            
-            # Draw knickpoints
-            if len(canal._kp) > 0:
-                for k in canal._kp:
-                    self.ax.plot(ai[k[0]], slp[k[0]], **self.kp_types[k[1]])
-                   
-        elif self.mode == 4: # ksn profile
-            title = "Ksn profile"
-            if canal.getName():
-                title += "  [{}]".format(canal.getName())
-            self.ax.set_title(title)
-            self.ax.set_title(title)
-            self.ax.set_xlabel("Distance (m)")
-            self.ax.set_ylabel("ksn")
-            di = canal.getD()
-            ksn = canal.getKsn()
-            self.ax.plot(di, ksn, c="k", lw=1.25, picker=True, pickradius=10)
-            
-            # Draw knickpoints
-            if len(canal._kp) > 0:
-                for k in canal._kp:
-                    self.ax.plot(di[k[0]], ksn[k[0]], **self.kp_types[k[1]])
-                    
-            # Draw regressions
-            if len(canal._regressions) > 0:
-                # Channel regressions are tuples (p1, p2, poli, R2)
-                # p1, p2 >> positions of first and second point of the regression
-                # poli >> Polinomial with the regression
-                # R2 >> Determination coeficient of the regression
-                for reg in canal._regressions:
-                    ksn = reg[3][0]
-                    d1 = di[reg[1]]
-                    d2 = di[reg[2]]
-                    self.ax.plot([d1, d2], [ksn, ksn], c="r", ls="--", lw=1.5)
-        
+        self._draw_graph(self.ax, canal, self.mode, True, True)
+
         if self.maintain_scale:
             self.ax.set_xlim(xlim)
             self.ax.set_ylim(ylim)
@@ -1090,12 +1102,6 @@ class ProfilerWindow(QMainWindow):
             id_channel = self.channels[self.active_channel].getOid()
             self.channelVl.selectByExpression('"oid"={}'.format(id_channel))
 
-    # BUTTON HANDLERS
-    ###########################################################################
-    # Handlers for button triggered. 
-    # When hit a button, only uncheck other options, the logic is embeded when they changed
-    # This allow connect-disconnect canvas events when hitting other button  
-    
     def setKP(self):
         if self.qa_setKP.isChecked():
             self._update_checked_buttons(self.qa_setKP)
@@ -1320,53 +1326,51 @@ class ProfilerWindow(QMainWindow):
         if self.n_channels == 0:
             return
         
-        dlg = QDialog(self)
-        dlg.setWindowTitle("Figure grid options")
-        layout = QFormLayout()
-        items = ["Longitudinal profile", "Chi profile", "Area-slope profile", "ksn profile"]
-        combo = QComboBox(dlg)
-        rowSpin = QSpinBox(dlg)
-        colSpin = QSpinBox(dlg)
-        rowSpin.setRange(1, 10)
-        colSpin.setRange(1, 10)
-        for item in items:
-            combo.addItem(item)
-            
-        layout.addRow("Graphic type:", combo)
-        layout.addRow("Rows:", rowSpin)
-        layout.addRow("Cols:", colSpin)
-        
-        dlg.setLayout(layout)
-            
-        QBtn = QDialogButtonBox.Ok | QDialogButtonBox.Cancel
-
-        buttonBox = QDialogButtonBox(QBtn)
-        buttonBox.accepted.connect(dlg.accept)
-        buttonBox.rejected.connect(dlg.reject)
-        layout.addRow(buttonBox)
-        
-        dlg.setLayout(layout)
-        dlg.show()
+        dlg = FigureGridDialog2()
         if dlg.exec():
-            nrow = rowSpin.value()
-            ncol = colSpin.value()
-            print("Success! {} rows, {} columns".format(nrow, ncol))
-        else:
-            print("Cancel!")
+            # Get parameters from Properties Dialog
+            nrow = dlg.row_spin.value()
+            ncol = dlg.col_spin.value()
+            graph_type = dlg.combo.currentText()
+            modes = {"Longitudinal profile":1, "Chi profile":2, "Area-slope profile":3, "ksn profile":4}
+            mode = modes.get(graph_type, 1)
 
+            # Get the file name with a QFileDialog
+            file_filter = "Portable Network Graphic (*.png);;"
+            file_filter += "PDF (*.pdf);;"
+            file_filter += "Encapsulated PostScript File (*.eps);;"
+            file_filter += "PostScript File (*.ps);;"
+            file_filter += "Scalable Vector Graphics (*.svg)"
 
-    # # DROPPED FUNCTIONS
-    # def _enable_spinBox(self, value):
-    #     self.qspin_nPoint.setValue(value) 
-    #     self.qspin_nPoint.setEnabled(True)
-    #     self.qlbl_nPoint.setEnabled(True)
-    #     self.qa_applyNpoint.setEnabled(True)
-        
-    # def _disable_spinBox(self):
-    #     self.qspin_nPoint.setValue(0)
-    #     self.qspin_nPoint.setEnabled(False)
-    #     self.qlbl_nPoint.setEnabled(False)
-    #     self.qa_applyNpoint.setEnabled(False)
+            url = QFileDialog.getSaveFileName(self, "Save Figure", "", file_filter)
+            filename = url[0]
+            if not filename:
+                return
+            f_name, extension = os.path.splitext(filename)
+
+            # Create the figure
+            n_sheets = math.ceil(self.n_channels / (nrow * ncol))
+            idf = 0
+
+            for m in range(n_sheets):
+                # By default, A4 size
+                fig = plt.figure(figsize=(8.2, 11.6))
+                for n in range(1, nrow * ncol + 1):
+                    ax = fig.add_subplot(nrow, ncol, n)
+                    canal = self.channels[idf]
+                    self._draw_graph(ax, canal, mode)
+
+                    # Remove labels from Y axis except for the first graphic of each row
+                    if idf % ncol:
+                        ax.set_yticklabels([])
+                        ax.set_ylabel("")
+
+                    idf += 1
+                    if idf >= self.n_channels:
+                        break
+                plt.tight_layout()
+                fig.savefig("{}_{:02d}{}".format(f_name, m, extension))
+            QMessageBox.about(self, "Profiler", "Figure/s saved successfully")
 
 
 def main():
