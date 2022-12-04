@@ -10,22 +10,39 @@ Before to install the plugin, it is necessary to install the **landspy** library
 
 ### Windows installation
 - Open **OSGeo4W shell** (packed with QGIS in the start menu)
+
 - Install **landspy** via pip by typing:
 
   `pip install landspy`
+
+- If you want to upgrade the landspy version, execute:
+  
+  `pip install landspy --upgrade`
+
 - Try it out by open the Python console inside QGIS, and type:
 
   `from landspy import DEM`
 
 ### Mac OSx installation
 The installation in Mac OsX a bit more complex, because QGIS uses the python Framework of the system. Following this workaround should work. 
+- Open one Terminal and go to the QGIS install folder (the folder can change depending on the installed version):
+  
+  `cd "/Applications/QGIS-LTR.app/Contents/MacOS/bin"`
 
-- TODO
+- Install **landspy** via pip by typing:
+
+  `./pip3 install landspy`
+
+- If you want to upgrade the landspy version, execute:
+  
+  `./pip3 install landspy --upgrade`
+
+- Try it out by open the Python console inside QGIS, and type:
+
+  `from landspy import DEM`
 
 ## Using the plugin
-The plugins consist of a processing provider and some buttons (for now, only one button is available). Check the following tutorials to see how to use QgsLandspy. 
-
-
+#### TODO
 
 
 

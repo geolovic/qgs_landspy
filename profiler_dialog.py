@@ -79,6 +79,7 @@ class ProfilerWindow(QMainWindow):
         self.channels = np.array([])
         self.n_channels = 0
         self.active_channel = None
+        self.saved = True
         
         # Initialize GUI
         self.GUI()
@@ -373,7 +374,7 @@ class ProfilerWindow(QMainWindow):
 
         # If running inside QGIS, update temporary layers, before to draw
         if self.iface:
-            # Update temprary layers
+            # Update temporary layers
             for vl in [self.channelVl, self.kpVl, self.regVl]:
                 if vl:
                     QgsProject.instance().removeMapLayer(vl)
@@ -387,6 +388,7 @@ class ProfilerWindow(QMainWindow):
 
         # Change to profile graph 1 and draw
             self.changeProfileGraph(1)
+            self.saved = True
 
         # except:
         #     msg = QMessageBox(parent=self)
@@ -409,6 +411,7 @@ class ProfilerWindow(QMainWindow):
             return
         try:
             np.save(name, self.channels, allow_pickle=True)
+            self.saved = True
         except:
             msg = QMessageBox(parent=self)
             msg.setIcon(QMessageBox.Critical)
@@ -445,6 +448,7 @@ class ProfilerWindow(QMainWindow):
             if self.iface:
                 # If running inside QGIS, update channel layer
                 self.updateChannelLayer()
+                self.saved = False
 
         except:
             msg = QMessageBox(parent=self)
@@ -505,6 +509,7 @@ class ProfilerWindow(QMainWindow):
             self.updateRegLayer()
 
         self.maintain_scale = False
+        self.saved = False
         self._draw()
 
     def saveFigure(self):
@@ -527,6 +532,57 @@ class ProfilerWindow(QMainWindow):
             return
 
         self.fig.savefig(filename, dpi=400.)
+
+    def saveFigures(self):
+        # Check if App has channels
+        if self.n_channels == 0:
+            return
+
+        dlg = FigureGridDialog2()
+        if dlg.exec():
+            # Get parameters from Properties Dialog
+            nrow = dlg.row_spin.value()
+            ncol = dlg.col_spin.value()
+            graph_type = dlg.combo.currentText()
+            modes = {"Longitudinal profile": 1, "Chi profile": 2, "Area-slope profile": 3, "ksn profile": 4}
+            mode = modes.get(graph_type, 1)
+
+            # Get the file name with a QFileDialog
+            file_filter = "Portable Network Graphic (*.png);;"
+            file_filter += "PDF (*.pdf);;"
+            file_filter += "Encapsulated PostScript File (*.eps);;"
+            file_filter += "PostScript File (*.ps);;"
+            file_filter += "Scalable Vector Graphics (*.svg)"
+
+            url = QFileDialog.getSaveFileName(self, "Save Figure", "", file_filter)
+            filename = url[0]
+            if not filename:
+                return
+            f_name, extension = os.path.splitext(filename)
+
+            # Create the figure
+            n_sheets = math.ceil(self.n_channels / (nrow * ncol))
+            idf = 0
+
+            for m in range(n_sheets):
+                # By default, A4 size
+                fig = plt.figure(figsize=(8.2, 11.6))
+                for n in range(1, nrow * ncol + 1):
+                    ax = fig.add_subplot(nrow, ncol, n)
+                    canal = self.channels[idf]
+                    self._draw_graph(ax, canal, mode)
+
+                    # Remove labels from Y axis except for the first graphic of each row
+                    if idf % ncol:
+                        ax.set_yticklabels([])
+                        ax.set_ylabel("")
+
+                    idf += 1
+                    if idf >= self.n_channels:
+                        break
+                plt.tight_layout()
+                fig.savefig("{}_{:02d}{}".format(f_name, m, extension))
+            QMessageBox.about(self, "Profiler", "Figure/s saved successfully")
 
     def createKPLayer(self):
         """
@@ -761,6 +817,7 @@ class ProfilerWindow(QMainWindow):
             pr.addFeature(f)
             self.kpVl.updateExtents()
             self.kpVl.triggerRepaint()
+            self.saved = False
     
     def removeKP(self, canal, pos):
         canal.removeKP(pos)
@@ -770,6 +827,7 @@ class ProfilerWindow(QMainWindow):
             idxs = self.kpVl.selectedFeatureIds()
             pr = self.kpVl.dataProvider()
             pr.deleteFeatures(idxs)
+            self.saved = False
             
     def addReg(self, canal, pos1, pos2):
         
@@ -783,7 +841,7 @@ class ProfilerWindow(QMainWindow):
                 reg = canal.getRegression(idx)
                 pr = self.regVl.dataProvider()
                 
-                # Atributtes
+                # Attributes
                 ksn = float(reg[3][0])
                 r2ksn = float(reg[4])
                 chid = int(canal.getOid())
@@ -804,6 +862,7 @@ class ProfilerWindow(QMainWindow):
                 # Update extents and repaint
                 self.regVl.updateExtents()
                 self.regVl.triggerRepaint()
+                self.saved = False
                 return True
             
             except:
@@ -823,6 +882,7 @@ class ProfilerWindow(QMainWindow):
             idxs = self.regVl.selectedFeatureIds()
             pr = self.regVl.dataProvider()
             pr.deleteFeatures(idxs)
+            self.saved = False
    
     def exportChannelData(self):
         """
@@ -971,7 +1031,9 @@ class ProfilerWindow(QMainWindow):
         self._draw()
 
     def _draw_graph(self, ax,  canal, mode, knickpoints=True, regressions=True, showtitle=True):
-
+        """
+        Private function to draw a channel into an Axe
+        """
         if mode == 1:  # Longitudinal profile
             if showtitle:
                 title = "Longitudinal profile"
@@ -1129,8 +1191,7 @@ class ProfilerWindow(QMainWindow):
                 self.canvas.mpl_disconnect(self.pc_id)
         
     def removeDam(self):
-        # Handler para botón de remove dam
-        pass
+        # Remove dam handler
         if self.qa_removeDam.isChecked():
             self._update_checked_buttons(self.qa_removeDam)
             self.pick_mode = 3 # Regression selection on
@@ -1171,7 +1232,7 @@ class ProfilerWindow(QMainWindow):
         if ind2 < ind1:
             ind2, ind1 = ind1, ind2
             
-        # Get two points depeding of graph mode (self.mode)
+        # Get two points depending on graph mode (self.mode)
         if self.mode == 1: # Long profile
             p1 = [canal._dx[ind1], canal._zx[ind1]]
             p2 = [canal._dx[ind2], canal._zx[ind2]]
@@ -1203,25 +1264,27 @@ class ProfilerWindow(QMainWindow):
         
         # Clear current_regression list and draw
         self.current_regression = []
+        self.saved = False
         self._draw()
 
     def calculateGradients(self):
         # Handler to tb_button_refresh
-        # Recalcuates gradients of the active channel with specific number of points (npointsSpinBox)
-        ## Get active channel
+        # Recalculates gradients of the active channel with specific number of points (npointsSpinBox)
+        # Get active channel
         if self.n_channels > 0:
             canal = self.channels[self.active_channel]
         else:
             return
 
-        npoints = self.qspin_nPoint.value()
+        n_points = self.qspin_nPoint.value()
         # If mode == 3, recalculate slope
         if self.mode == 3:
-            canal.calculateGradients(npoints, 'slp')
+            canal.calculateGradients(n_points, 'slp')
         # If mode == 4, recalculate ksn
         elif self.mode == 4:
-            canal.calculateGradients(npoints, 'ksn')
-        
+            canal.calculateGradients(n_points, 'ksn')
+
+        self.saved = False
         self._draw()
         
     def nextProfile(self, direction):
@@ -1246,7 +1309,6 @@ class ProfilerWindow(QMainWindow):
         self._draw()
 
     def zReset(self):
-        
         if self.n_channels == 0:
             return 
         
@@ -1262,6 +1324,7 @@ class ProfilerWindow(QMainWindow):
         canal.calculateGradients(canal._slp_np, 'slp')
         canal.calculateGradients(canal._ksn_np, 'ksn')
         self.maintain_scale = False
+        self.saved = False
         self._draw()
         
     def setName(self):
@@ -1275,7 +1338,7 @@ class ProfilerWindow(QMainWindow):
         text, ok = QInputDialog.getText(self, 'Profile Name', 'Set channel name:')
         if ok:
             canal.setName(str(text))
-
+            self.saved = False
         self._draw()
         
     def smoothElevations(self):
@@ -1293,6 +1356,7 @@ class ProfilerWindow(QMainWindow):
         if ok:
             try:
                 winsize = float(text)
+
             except:
                 qm = QMessageBox()
                 qm.critical(self, "Input error", "Wrong window size entered!")
@@ -1300,12 +1364,24 @@ class ProfilerWindow(QMainWindow):
             canal.smoothChannel(winsize=winsize)
 
         self.maintain_scale = False
+        self.saved = False
         self._draw()
        
     def closeEvent(self, event):
-        qm = QMessageBox()
-        res = qm.question(self, "Exit profiler", "Are you sure you want to exit?\nUnsaved changes will be lost.", qm.Yes|qm.No)
-        if res == qm.Yes:
+        """
+        Exit from application, if changes were not saved, ask for saving.
+        """
+        if not self.saved:
+            qm = QMessageBox()
+            res = qm.question(self, "Exit profiler", "Are you sure you want to exit?\nUnsaved changes will be lost.", qm.Yes|qm.No)
+            if res == qm.Yes:
+                do_close = True
+            else:
+                do_close = False
+        else:
+            do_close = True
+
+        if do_close:
             # Remove layers
             for vl in [self.channelVl, self.kpVl, self.regVl]:
                 if vl:
@@ -1320,62 +1396,10 @@ class ProfilerWindow(QMainWindow):
         else:
             # Do not close
             event.ignore()
-            
-    def saveFigures(self):
-        # Check if App has channels
-        if self.n_channels == 0:
-            return
-        
-        dlg = FigureGridDialog2()
-        if dlg.exec():
-            # Get parameters from Properties Dialog
-            nrow = dlg.row_spin.value()
-            ncol = dlg.col_spin.value()
-            graph_type = dlg.combo.currentText()
-            modes = {"Longitudinal profile":1, "Chi profile":2, "Area-slope profile":3, "ksn profile":4}
-            mode = modes.get(graph_type, 1)
-
-            # Get the file name with a QFileDialog
-            file_filter = "Portable Network Graphic (*.png);;"
-            file_filter += "PDF (*.pdf);;"
-            file_filter += "Encapsulated PostScript File (*.eps);;"
-            file_filter += "PostScript File (*.ps);;"
-            file_filter += "Scalable Vector Graphics (*.svg)"
-
-            url = QFileDialog.getSaveFileName(self, "Save Figure", "", file_filter)
-            filename = url[0]
-            if not filename:
-                return
-            f_name, extension = os.path.splitext(filename)
-
-            # Create the figure
-            n_sheets = math.ceil(self.n_channels / (nrow * ncol))
-            idf = 0
-
-            for m in range(n_sheets):
-                # By default, A4 size
-                fig = plt.figure(figsize=(8.2, 11.6))
-                for n in range(1, nrow * ncol + 1):
-                    ax = fig.add_subplot(nrow, ncol, n)
-                    canal = self.channels[idf]
-                    self._draw_graph(ax, canal, mode)
-
-                    # Remove labels from Y axis except for the first graphic of each row
-                    if idf % ncol:
-                        ax.set_yticklabels([])
-                        ax.set_ylabel("")
-
-                    idf += 1
-                    if idf >= self.n_channels:
-                        break
-                plt.tight_layout()
-                fig.savefig("{}_{:02d}{}".format(f_name, m, extension))
-            QMessageBox.about(self, "Profiler", "Figure/s saved successfully")
 
 
 def main():
     app = QApplication(sys.argv)
-    #canales = np.load("canales.npy", allow_pickle=True)
     win = ProfilerWindow(None, None)
     sys.exit(app.exec_())
 
