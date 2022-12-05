@@ -6,14 +6,14 @@
 name=QLandspy
 qgisMinimumVersion=3.0
 description=Landscape analysis with QGIS
-version=0.1
+version=1.2
 author=J. Vicente Pérez
 email=vperez@go.ugr.es
 
 about=This plugin allows spatial analysis of topography, extraction of drainage networks and related metrics, geomorphic indexes, etc.
 
-tracker=http://bugs
-repository=http://repo
+tracker=https://github.com/geolovic/qgs_landspy/issues
+repository=https://github.com/geolovic/qgs_landspy
 # End of mandatory metadata
 
 # Recommended items:
@@ -25,7 +25,7 @@ hasProcessingProvider=no
 # Tags are comma separated with spaces allowed
 tags=python
 
-homepage=http://homepage
+homepage=https://github.com/geolovic/qgs_landspy
 category=Plugins
 icon=icon.png
 # experimental flag

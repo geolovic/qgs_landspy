@@ -311,43 +311,40 @@ class ProfilerWindow(QMainWindow):
         """
         This function creates the Graphic User Interface (buttons and actions)
         """
-        # Creamos un Widget FigureCanvas (para mostrar un gráfico de matplotlib)
+        # Create a FigureCanvas widget to show a matplotlib graphic
         self.fig = Figure()
         self.canvas = FigureCanvas(self.fig)
         self.ax = self.fig.add_subplot(111)
         self.ax.set_xlim((0, 100))
         self.ax.set_ylim((0, 100))
        
-        # Configuramos el FigureCanvas como Widget central
+        #  Set the FigureCanvas as the central Widget and modify its size
         self.setCentralWidget(self.canvas)
-        
-        # Modificamos tamaño inicial de MainWindoww
         self.resize(750, 550)
         
-        # Creamos Status Bar
+        # Create Status Bar
         self.statusBar = QStatusBar(self)
         self.setStatusBar(self.statusBar)
         
-        # Creamos acciones de aplicación
+        # Create QActions
         self._create_actions()
         
-        # Añadimos barra de herramientas
+        # Add ToolBar
         self._create_toolbar()
         
-        # Añadimos menú
+        # Add Menu
         self._create_menu()
         
-        # Mostramos ventana
+        # Show window
         self.show()
 
     def loadChannels(self):
         """
         Load a channels file into the App. 
         """
-        
         dlg = QFileDialog(self)
         name = dlg.getOpenFileName(self, "Load channels")[0]
-        mensaje = "Error loading channels!"
+        mess = "Error loading channels!"
         
         if not name:
             return
@@ -357,17 +354,17 @@ class ProfilerWindow(QMainWindow):
 
         # Check if array contains Channels instances
         if type(canal) is not Channel:
-            mensaje = "Empty channel file!"
+            mess = "Empty channel file!"
             raise TypeError
 
         # Check if all channels have the same crs
         proj = canal.getCRS()
         for canal in channels:
             if canal.getCRS() != proj:
-                mensaje = "Channels have different coordinate systems"
+                mess = "Channels have different coordinate systems"
                 raise TypeError
 
-        # Set channels, nchannels and active channel
+        # Set channels, n_channels and active channel
         self.channels = channels
         self.n_channels = len(channels)
         self.active_channel = 0
@@ -393,7 +390,7 @@ class ProfilerWindow(QMainWindow):
         # except:
         #     msg = QMessageBox(parent=self)
         #     msg.setIcon(QMessageBox.Critical)
-        #     msg.setText(mensaje)
+        #     msg.setText(mess)
         #     msg.setWindowTitle("Error")
         #     msg.show()
     
@@ -570,7 +567,7 @@ class ProfilerWindow(QMainWindow):
                 for n in range(1, nrow * ncol + 1):
                     ax = fig.add_subplot(nrow, ncol, n)
                     canal = self.channels[idf]
-                    self._draw_graph(ax, canal, mode)
+                    self._draw_graph(ax, canal, mode, showtitle=False)
 
                     # Remove labels from Y axis except for the first graphic of each row
                     if idf % ncol:
@@ -986,8 +983,8 @@ class ProfilerWindow(QMainWindow):
             # Left button >> Add regression point
             if event.mouseevent.button==1:
                 if len(self.current_regression) == 0:
-                    # Si no hay ningun punto introducido
-                    # Introducimos el punto, lo dibujamos y salimos sin llamar a self._draw()
+                    # If current_regression list hasn't got any point, add the clicked point to list
+                    # Draw the point into the Axe, refresh canvas and exit (without calling to self._draw)
                     self.current_regression.append(ind)
                     self.ax.plot(event.mouseevent.xdata, event.mouseevent.ydata, ls="", marker="+", ms=10)
                     
@@ -998,7 +995,7 @@ class ProfilerWindow(QMainWindow):
                     return
                 
                 elif len(self.current_regression) == 1:
-                    # Si hay un punto introducido, añadimos la regresión
+                    # If current_regression list has only one point, add the second to list and create regression
                     self.current_regression.append(ind)
                     self.addReg(canal, self.current_regression[0], self.current_regression[1])
                     self.current_regression = []
@@ -1034,12 +1031,10 @@ class ProfilerWindow(QMainWindow):
         """
         Private function to draw a channel into an Axe
         """
+        title = ""
         if mode == 1:  # Longitudinal profile
             if showtitle:
                 title = "Longitudinal profile"
-            else:
-                title=""
-
             if canal.getName():
                 title += "  [{}]".format(canal.getName())
             ax.set_title(title)
@@ -1055,7 +1050,8 @@ class ProfilerWindow(QMainWindow):
                     self.ax.plot(di[k[0]], zi[k[0]], **self.kp_types[k[1]])
 
         elif mode == 2:  # Chi profile
-            title = "Chi profile ($\Theta$=0.45)"
+            if showtitle:
+                title = "Chi profile ($\Theta$=0.45)"
             if canal.getName():
                 title += "  [{}]".format(canal.getName())
             ax.set_title(title)
@@ -1086,7 +1082,8 @@ class ProfilerWindow(QMainWindow):
                     ax.plot([chi1, chi2], [z1, z2], c="r", ls="--", lw=1.5)
 
         elif mode == 3:  # Area-slope profile
-            title = "Area-slope profile"
+            if showtitle:
+                title = "Area-slope profile"
             if canal.getName():
                 title += "  [{}]".format(canal.getName())
             ax.set_title(title)
@@ -1106,7 +1103,8 @@ class ProfilerWindow(QMainWindow):
                     ax.plot(ai[k[0]], slp[k[0]], **self.kp_types[k[1]])
 
         elif mode == 4:  # ksn profile
-            title = "Ksn profile"
+            if showtitle:
+                title = "Ksn profile"
             if canal.getName():
                 title += "  [{}]".format(canal.getName())
             ax.set_title(title)
@@ -1176,7 +1174,7 @@ class ProfilerWindow(QMainWindow):
                 self.canvas.mpl_disconnect(self.pc_id)
             
     def setRegression(self):
-        # Handler para botón de regressions
+        # Handler para boton de regressions
         if self.qa_setRegression.isChecked():
             self._update_checked_buttons(self.qa_setRegression)
             self.pick_mode = 2 # Regression selection on
