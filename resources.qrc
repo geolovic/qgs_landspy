@@ -14,5 +14,6 @@
         <file>icons/reg.ico</file>
         <file>icons/savefig.png</file>
         <file>icons/calhypso.png</file>
+        <file>icons/delete.png</file>
     </qresource>
 </RCC>

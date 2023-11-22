@@ -242,6 +242,8 @@ class ProfilerWindow(QMainWindow):
         exportmenu.addAction(self.qa_saveFig)
         exportmenu.addAction(self.qa_saveFigs)
         toolsmenu.addAction(self.qa_smooth)
+        toolsmenu.addAction(self.qa_deleteKP)
+        toolsmenu.addAction(self.qa_deleteReg)
         toolsmenu.addAction(self.qa_zReset)
         toolsmenu.addAction(self.qa_setName)
 
@@ -1098,7 +1100,7 @@ class ProfilerWindow(QMainWindow):
             ax.set_yscale("log")
 
             # Draw knickpoints
-            if knickpoints and (canal._kp) > 0:
+            if knickpoints and len(canal._kp) > 0:
                 for k in canal._kp:
                     ax.plot(ai[k[0]], slp[k[0]], **self.kp_types[k[1]])
 
