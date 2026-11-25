@@ -73,6 +73,7 @@ class QgsLandspy:
         """Removes the plugin menu item and icon from QGIS GUI."""
         # Remove Profiler
         self.iface.removePluginMenu(self.menu, self.profAction)
+        self.iface.removePluginMenu(self.menu, self.hypsoAction)
         self.iface.removeToolBarIcon(self.profAction)
         self.iface.removeToolBarIcon(self.hypsoAction)
         QgsApplication.processingRegistry().removeProvider(self.provider)
