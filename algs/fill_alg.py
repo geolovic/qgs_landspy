@@ -48,7 +48,7 @@ class Fill(QgsProcessingAlgorithm):
         Returns a localised short helper string for the algorithm. 
         """
         texto = """
-                    This script fills the pits of a Digital Elevacion Model (DEM)
+                    This script fills the pits of a Digital Elevation Model (DEM)
                     DEM : Input Digital Elevation Model (DEM)
                     Filled DEM : Output pit-filled DEM
                     """
