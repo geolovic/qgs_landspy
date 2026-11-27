@@ -30,7 +30,7 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import numpy as np
 from landspy import Channel
-from .dialogs import FigureGridDialog2
+from .dialogs import FigureGridDialog2, GradientsDialog
 
 
 class ProfilerWindow(QMainWindow):
@@ -133,6 +133,8 @@ class ProfilerWindow(QMainWindow):
 
         # Tools menu (Smooth channel, Delete knickpoints, Delete regressions)
         self.qa_smooth = QAction("Smooth channel", self)
+        self.qa_smoothAll = QAction("Smooth all channels", self)
+        self.qa_recalculateGradients = QAction("Recalculate gradients", self)
         self.qa_deleteKP = QAction("Delete knickpoints", self)
         self.qa_deleteReg = QAction("Delete regressions", self)
         self.qa_setName = QAction("Change channel name", self)
@@ -175,6 +177,8 @@ class ProfilerWindow(QMainWindow):
         self.qa_zReset.triggered.connect(self.zReset)
         self.qa_setName.triggered.connect(self.setName)
         self.qa_smooth.triggered.connect(self.smoothElevations)
+        self.qa_smoothAll.triggered.connect(lambda checked: self.smoothElevations(all_channels=True))
+        self.qa_recalculateGradients.triggered.connect(self.recalculateGradients)
 
     def _create_toolbar(self):
         """
@@ -242,6 +246,8 @@ class ProfilerWindow(QMainWindow):
         exportmenu.addAction(self.qa_saveFig)
         exportmenu.addAction(self.qa_saveFigs)
         toolsmenu.addAction(self.qa_smooth)
+        toolsmenu.addAction(self.qa_smoothAll)
+        toolsmenu.addAction(self.qa_recalculateGradients)
         toolsmenu.addAction(self.qa_deleteKP)
         toolsmenu.addAction(self.qa_deleteReg)
         toolsmenu.addAction(self.qa_zReset)
@@ -1267,6 +1273,30 @@ class ProfilerWindow(QMainWindow):
         self.saved = False
         self._draw()
 
+    def recalculateGradients(self):
+        if self.n_channels == 0:
+            return
+
+        canal = self.channels[self.active_channel]
+        dialog = GradientsDialog(self, int(canal._ksn_np), int(canal._slp_np), self.qspin_nPoint.maximum())
+        if dialog.exec_() != QDialog.Accepted:
+            return
+
+        channels = self.channels if dialog.scope_combo.currentIndex() == 1 else [canal]
+        for channel in channels:
+            if dialog.ksn.isChecked():
+                channel.calculateGradients(dialog.ksn_spin.value(), 'ksn')
+            if dialog.slope.isChecked():
+                channel.calculateGradients(dialog.slope_spin.value(), 'slp')
+
+        if self.mode == 3 and dialog.slope.isChecked():
+            self.qspin_nPoint.setValue(dialog.slope_spin.value())
+        elif self.mode == 4 and dialog.ksn.isChecked():
+            self.qspin_nPoint.setValue(dialog.ksn_spin.value())
+
+        self.saved = False
+        self._draw()
+
     def calculateGradients(self):
         # Handler to tb_button_refresh
         # Recalculates gradients of the active channel with specific number of points (npointsSpinBox)
@@ -1341,26 +1371,26 @@ class ProfilerWindow(QMainWindow):
             self.saved = False
         self._draw()
         
-    def smoothElevations(self):
+    def smoothElevations(self, all_channels=False):
         """
         Smooth channel elevations by applying a moving average
         """
-        # Get active channel
-        if self.n_channels > 0:
-            canal = self.channels[self.active_channel]
-        else:
+        if self.n_channels == 0:
             return
-                
-        # Show smooth channel dialog
-        text, ok = QInputDialog.getText(self, 'Smooth Channel', 'Window size:')
-        if ok:
-            try:
-                winsize = float(text)
 
-            except:
-                qm = QMessageBox()
-                qm.critical(self, "Input error", "Wrong window size entered!")
-                return
+        title = "Smooth all channels" if all_channels else "Smooth Channel"
+        text, ok = QInputDialog.getText(self, title, 'Window size:')
+        if not ok:
+            return
+        try:
+            winsize = float(text)
+        except ValueError:
+            qm = QMessageBox()
+            qm.critical(self, "Input error", "Wrong window size entered!")
+            return
+
+        channels = self.channels if all_channels else [self.channels[self.active_channel]]
+        for canal in channels:
             canal.smoothChannel(winsize=winsize)
 
         self.maintain_scale = False

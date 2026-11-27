@@ -116,3 +116,42 @@ class FigureGridDialog2(QDialog):
         layout.addRow(buttonbox)
 
         self.show()
+
+
+class GradientsDialog(QDialog):
+    def __init__(self, parent, ksn_points, slope_points, max_points):
+        super().__init__(parent)
+        self.setWindowTitle("Recalculate gradients")
+        self.GUI(ksn_points, slope_points, max_points)
+
+    def GUI(self, ksn_points, slope_points, max_points):
+        self.ksn = QCheckBox("ksn", self)
+        self.slope = QCheckBox("Slope", self)
+        self.ksn_spin = QSpinBox(self)
+        self.slope_spin = QSpinBox(self)
+        self.ksn_spin.setRange(1, max(max_points, ksn_points))
+        self.slope_spin.setRange(1, max(max_points, slope_points))
+        self.ksn_spin.setValue(ksn_points)
+        self.slope_spin.setValue(slope_points)
+        self.ksn.setChecked(True)
+        self.slope.setChecked(True)
+
+        self.scope_combo = QComboBox(self)
+        self.scope_combo.addItems(["Current profile", "All profiles"])
+        self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+        self.ksn.toggled.connect(self.ksn_spin.setEnabled)
+        self.slope.toggled.connect(self.slope_spin.setEnabled)
+        self.ksn.toggled.connect(self._updateOk)
+        self.slope.toggled.connect(self._updateOk)
+
+        layout = QFormLayout(self)
+        layout.addRow("", QLabel("N Points:", self))
+        layout.addRow(self.ksn, self.ksn_spin)
+        layout.addRow(self.slope, self.slope_spin)
+        layout.addRow("Apply to:", self.scope_combo)
+        layout.addRow(self.buttonBox)
+
+    def _updateOk(self):
+        self.buttonBox.button(QDialogButtonBox.Ok).setEnabled(self.ksn.isChecked() or self.slope.isChecked())
